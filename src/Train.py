@@ -34,13 +34,13 @@ def train():
         # To do images, labels = BonaAge.processed_inputs():
 
         # Build a graph that computes the log odds unit prediction from the inference model (Forward pass)
-        # To do logits = BonaAge.inference (images)
+        logits = BonaAge.forward_pass (images)
 
-        # To do : Calculate the loss:
-        loss = BonaAge.loss(logits, labels)
+        # To do : Calculate the total loss, adding L2 regularization and calculated cross entropy
+        loss = BonaAge.total_loss(logits, labels)
 
         # Build the backprop graph to train the model with one batch and update the parameters (Backward pass)
-        # To do train_op = BonaAge.train(loss, global_step)
+        train_op = BonaAge.backward_pass(loss, global_step)
 
         # SessionRunHook is called when you use a monitored session's run function after each run
         #To do: Define run_values and run_context
