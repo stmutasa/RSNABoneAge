@@ -9,11 +9,13 @@ import time                                 # to retreive current time
 import tensorflow as tf
 import BonaAge
 
+_author_ = 'Simi'
+
 # Define the FLAGS class to hold our immutable global variables
 FLAGS = tf.app.flags.FLAGS
 
 # Define some of the immutable variables
-tf.app.flags.DEFINE_string('train_dir', 'Training_Logs', """Directory to write event logs and save checkpoint files""")
+tf.app.flags.DEFINE_string('train_dir', 'Training', """Directory to write event logs and save checkpoint files""")
 tf.app.flags.DEFINE_integer('max_steps', 100000, """Number of batches to run""")
 tf.app.flags.DEFINE_integer('test_interval', 1000, """How often to test the model during training""")
 tf.app.flags.DEFINE_integer('print_interval', 10, """How often to print a summary to console during training""")

@@ -1,5 +1,3 @@
-_author_ = 'simi'
-
  # Defines and builds our network
  #    Computes input images and labels using inputs() or distorted inputs ()
  #    Computes inference on the models (forward pass) using inference()
@@ -9,6 +7,8 @@ _author_ = 'simi'
 from __future__ import absolute_import      # import multi line and Absolute/Relative
 from __future__ import division             # change the division operator to output float if dividing two integers
 from __future__ import print_function       # use the print function from python 3
+
+_author_ = 'Simi'
 
 import os           # for the os type functionality, read write files and manipulate paths
 import re           # regular expression operations for the print statements
@@ -23,7 +23,7 @@ FLAGS = tf.app.flags.FLAGS
 
 # Define some of the immutable variables
 tf.app.flags.DEFINE_integer('batch_size', 4, """Number of images to process in a batch.""")
-tf.app.flags.DEFINE_string('data_dir', 'data', """Path to the data directory.""")
+tf.app.flags.DEFINE_string('data_dir', 'Data', """Path to the data directory.""")
 tf.app.flags.DEFINE_boolean('use_fp16', False, """Train the model using fp16.""")
 tf.app.flags.DEFINE_float('keep_prob', 0.5, """probability of dropping out a neuron""")
 
