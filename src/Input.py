@@ -133,3 +133,5 @@ def img_protobuf(images, labels, num_examples, name):
         writer.write(example.SerializeToString())
 
     writer.close()      # Close the file after writing
+
+    return
