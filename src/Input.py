@@ -130,7 +130,7 @@ def img_protobuf(images, labels, num_examples, name):
 
 
         example = tf.train.Example(features=tf.train.Features(feature=create_feature_dict(data,index)))
-        writer.write(example.SerializeToString())
+        writer.write(example.SerializeToString())    # Converts data to serialized string and writes it in the protobuf
 
     writer.close()      # Close the file after writing
 

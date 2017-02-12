@@ -8,7 +8,7 @@ from __future__ import absolute_import      # import multi line and Absolute/Rel
 from __future__ import division             # change the division operator to output float if dividing two integers
 from __future__ import print_function       # use the print function from python 3
 
-_author_ = 'Simi'
+_author_ = 'simi'
 
 import os           # for the os type functionality, read write files and manipulate paths
 import re           # regular expression operations for the print statements
@@ -56,16 +56,77 @@ def forward_pass(images):
 
     # The first convolutional layer
     with tf.variable_scope('conv1') as scope:       # Define this variable scope as conv1
-        kernel = _variable_with_weight_decay('weights',shape=[3,3,1,96], wd=0.0)    # Xavier init. No WD
+        kernel = _variable_with_weight_decay('weights',shape=[7,7,1,96], wd=0.0)    # Xavier init. No WD
         conv = tf.nn.conv2d(images,kernel,[1,1,1,1], padding='SAME')    # Create a 2D tensor with BATCH_SIZE rows
         biases = _variable_on_cpu('biases', 96, tf.constant_initializer(0.0)) # Initialize biases as 0
-        pre_activation = tf.nn.bias_add(conv, biases)
+        pre_activation = tf.nn.bias_add(conv, biases)       # Add conv and biases into one tensor
         conv1 = tf.nn.elu(pre_activation,name=scope.name)   # Use ELU to prevent sparsity.
         _activation_summary(conv1)                          # Create a histogram/scalar summary of the conv1 layer
 
-    # To Do: Fill out the rest of the CNN as needed
+    # Insert batch norm layer:
+    norm1 = tf.nn.lrn(conv1, 4, 1.0, 0.001/9.0, 0.75, 'norm1')
 
-    return fc7_layer        # Return whatever the name of the final logits variable is
+    # The second convolutional layer
+    with tf.variable_scope('conv2') as scope:  # Define this variable scope as conv1
+        kernel = _variable_with_weight_decay('weights', shape=[5, 5, 96, 2048], wd=0.0)  # Xavier init. No WD
+        conv = tf.nn.conv2d(norm1, kernel, [1, 2, 2, 1], padding='VALID')  # Create a 2D tensor with BATCH_SIZE rows
+        biases = _variable_on_cpu('biases', 2048, tf.constant_initializer(0.0))  # Initialize biases as 0
+        pre_activation = tf.nn.bias_add(conv, biases)       # Add conv and biases into one layer
+        conv2 = tf.nn.elu(pre_activation, name=scope.name)  # Use ELU to prevent sparsity.
+        _activation_summary(conv2)  # Create a histogram/scalar summary of the conv1 layer
+
+    # Insert batch norm layer:
+    norm2 = tf.nn.lrn(conv2, 4, 1.0, 0.001/9.0, 0.75, 'norm2')
+
+    # The third convolutional layer
+    with tf.variable_scope('conv3') as scope:  # Define this variable scope as conv1
+        kernel = _variable_with_weight_decay('weights', shape=[3, 3, 2048, 1024], wd=0.0)  # Xavier init. No WD
+        conv = tf.nn.conv2d(norm2, kernel, [1, 2, 2, 1], padding='VALID')  # Create a 2D tensor with BATCH_SIZE rows
+        biases = _variable_on_cpu('biases', 1024, tf.constant_initializer(0.0))  # Initialize biases as 0
+        pre_activation = tf.nn.bias_add(conv, biases)       # Add conv and biases into one layer
+        conv3 = tf.nn.elu(pre_activation, name=scope.name)  # Use ELU to prevent sparsity.
+        _activation_summary(conv3)  # Create a histogram/scalar summary of the conv1 layer
+
+    # Insert batch norm layer:
+    norm3 = tf.nn.lrn(conv3, 4, 1.0, 0.001/9.0, 0.75, 'norm3')
+
+    # The 4th convolutional layer
+    with tf.variable_scope('conv4') as scope:  # Define this variable scope as conv1
+        kernel = _variable_with_weight_decay('weights', shape=[3, 3, 1024, 1024], wd=0.0)  # Xavier init. No WD
+        conv = tf.nn.conv2d(norm3, kernel, [1, 2, 2, 1], padding='VALID')  # Create a 2D tensor with BATCH_SIZE rows
+        biases = _variable_on_cpu('biases', 1024, tf.constant_initializer(0.0))  # Initialize biases as 0
+        pre_activation = tf.nn.bias_add(conv, biases)       # Add conv and biases into one layer
+        conv4 = tf.nn.elu(pre_activation, name=scope.name)  # Use ELU to prevent sparsity.
+        _activation_summary(conv4)  # Create a histogram/scalar summary of the conv1 layer
+
+    # Insert batch norm layer:
+    norm4 = tf.nn.lrn(conv4, 4, 1.0, 0.001/9.0, 0.75, 'norm4')
+
+    # To Do: Insert the affine transform layer here
+    affine1 = 0
+
+    # The 5th convolutional layer
+    with tf.variable_scope('conv5') as scope:  # Define this variable scope as conv1
+        kernel = _variable_with_weight_decay('weights', shape=[3, 3, 1024, 1024], wd=0.0)  # Xavier init. No WD
+        conv = tf.nn.conv2d(affine1, kernel, [1, 2, 2, 1], padding='VALID')  # Create a 2D tensor with BATCH_SIZE rows
+        biases = _variable_on_cpu('biases', 1024, tf.constant_initializer(0.0))  # Initialize biases as 0
+        pre_activation = tf.nn.bias_add(conv, biases)       # Add conv and biases into one layer
+        conv5 = tf.nn.elu(pre_activation, name=scope.name)  # Use ELU to prevent sparsity.
+        _activation_summary(conv5)  # Create a histogram/scalar summary of the conv1 layer
+
+    # The last batch norm layer:
+    norm5 = tf.nn.lrn(conv5, 4, 1.0, 0.001/9.0, 0.75, 'norm5')
+
+    # To Do: Maybe apply dropout here
+
+    # The linear layer
+    with tf.variable_scope('linear') as scope:
+        weights = _variable_with_weight_decay('weights', [1024, FLAGS.num_classes], wd=0.0)
+        biases = _variable_on_cpu('biases', [FLAGS.num_classes], tf.constant_initializer(0.0))
+        softmax = tf.add(tf.matmul(norm5, weights), biases, name=scope.name)
+        _activation_summary(softmax)
+
+    return softmax        # Return whatever the name of the final logits variable is
 
 def total_loss(logits, labels):
     """ Add L2 loss to the trainable variables and a summary
@@ -205,9 +266,3 @@ def _add_loss_summaries(total_loss):
             tf.summary.scalar(l.op.name, loss_averages.average(l))
 
         return loss_averages_op
-
-def inputs():
-    return
-
-def distorted_inputs():
-    return
