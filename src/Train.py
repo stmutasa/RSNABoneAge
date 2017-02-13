@@ -15,8 +15,9 @@ _author_ = 'Simi'
 FLAGS = tf.app.flags.FLAGS
 
 # Define some of the immutable variables
-tf.app.flags.DEFINE_string('train_dir', 'Training', """Directory to write event logs and save checkpoint files""")
+tf.app.flags.DEFINE_string('train_dir', 'training', """Directory to write event logs and save checkpoint files""")
 tf.app.flags.DEFINE_integer('max_steps', 100000, """Number of batches to run""")
+tf.app.flags.DEFINE_integer('num_epochs', 150, """How many epochs to run""")
 tf.app.flags.DEFINE_integer('test_interval', 1000, """How often to test the model during training""")
 tf.app.flags.DEFINE_integer('print_interval', 10, """How often to print a summary to console during training""")
 tf.app.flags.DEFINE_integer('checkpoint_steps', 100, """How many steps to iterate before saving a checkpoint""")
@@ -33,6 +34,7 @@ def train():
         global_step = tf.contrib.framework.get_or_create_global_step()
 
         # Get the images and labels for our data set here
+
         # To do images, labels = BonaAge.processed_inputs():
 
         # Build a graph that computes the log odds unit prediction from the inference model (Forward pass)
@@ -84,11 +86,24 @@ def train():
 # What does this shit do? Who knows, but make sure it's in there or the code won't work
 
 def main(argv=None):  # pylint: disable=unused-argument
-    cifar10.maybe_download_and_extract()
     if tf.gfile.Exists(FLAGS.train_dir):
         tf.gfile.DeleteRecursively(FLAGS.train_dir)
     tf.gfile.MakeDirs(FLAGS.train_dir)
     train()
+
+def cst(coord=None, sess=None, threads=None):
+    """ This function coordinates the execution of the graph"""
+    if coord is None:
+        coord = tf.train.Coordinator() # Coordinates the timing and termination of threads
+        sess = tf.Session()
+        sess.run([tf.global_variables_initializer(), tf.local_variables_initializer()])     # Runs one "step"
+        threads = tf.train.start_queue_runners(sess=sess, coord=coord)      # Starts the queue runners in the graph
+        return coord, sess, threads
+    else:
+        coord.request_stop()    # Request a stop of threads. should_stop() will return True
+        coord.join(threads)     # Waits for threads to terminate
+        sess.close()
+        return
 
 if __name__ == '__main__':
     tf.app.run()

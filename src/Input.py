@@ -36,7 +36,9 @@ tf.app.flags.DEFINE_integer('num_eval_examples', 100, """The amount of examples 
 tf.app.flags.DEFINE_integer('num_test_examples', 500, """The amount of examples set aside for testing""")
 
 # Define filename for saving the image protobuffers
-tf.app.flags.DEFINE_string('input_folder', 'Input', """Folder where inputs are stored""")
+# Raw data is jpegs numbered from 3128 to 7293 with some entries missing
+tf.app.flags.DEFINE_string('input_folder', 'data/raw', """Folder where our raw inputs are stored""")
+tf.app.flags.DEFINE_string('records_file', 'data/tfrecords.protobuf', """What to call our records protobuf""")
 
 # Functions to define:
 # Write image and label to TFRecords
@@ -125,8 +127,8 @@ def img_protobuf(images, labels, num_examples, name):
     # Loop through each example and append the protobuf with the specified features
     for index in range(num_examples):
         # First create our dictionary of values to store: Added some dimensions values that may be useful later on
-        data = { 'height': _int64_feature(rows),'width': _int64_feature(columns), 'depth': _int64_feature(depth),
-                 'label': _int64_feature(int(labels[index])),'data': _bytes_feature(images[index])}
+        data = { 'data': _bytes_feature(images[index]), 'label': _int64_feature(int(labels[index])),
+                 'height': _int64_feature(rows),'width': _int64_feature(columns), 'depth': _int64_feature(depth)}
 
 
         example = tf.train.Example(features=tf.train.Features(feature=create_feature_dict(data,index)))
@@ -135,3 +137,86 @@ def img_protobuf(images, labels, num_examples, name):
     writer.close()      # Close the file after writing
 
     return
+
+def load_protobuf(filename_queue):
+    """ This function loads the previously saved protocol buffer and converts it's entries in to a Tensor for use
+        in Training. For now, define the variables and dictionaries here locally and define Peters params[] class later
+        Args
+            filename_queue: the pointer to the protobuf containing all of our data
+        Returns:
+            Images and Labels: The tensors with the data"""
+
+    # Outputs strings (filenames) to a queue for an input pipeline can do this in train and pass to this function
+    # Will generate a random shuffle of the string tensors each epoch
+    filename_queue = tf.train.string_input_producer([params['tf_file']], num_epochs=params['num_epochs'])
+
+    reader = tf.TFRecordReader()        # Instantializes a TFRecordReader which outputs records from a TFRecords file
+    _, serialized_example = reader.read(filename_queue)    # Returns the next record (key:value) produced by the reader
+
+    # Tutorial implementation Below --------------------------------------------------------------
+
+    # Create the feature dictionary to store the variables we will retrieve using the parse
+    feature_dict = {'id':{'data': tf.FixedLenFeature([], tf.string), 'label': tf.FixedLenFeature([], tf.int64),
+                    'height': tf.FixedLenFeature([], tf.int64), 'width': tf.FixedLenFeature([], tf.int64),
+                    'depth': tf.FixedLenFeature([], tf.int64)}}
+    # Q? Does defining the value in the feature dict as a type force that type on feed? if so why use decode raw
+
+    # Parses one protocol buffer file into the features dictionary which maps keys to tensors with the data
+    features = tf.parse_single_example(serialized_example, features=feature_dict)
+
+    # Change the raw image data to a floating point integer tensor stored in image
+    image = tf.decode_raw(features['data'], tf.float32)
+
+    # Set the shape of the tensor for the image based on the values provided
+    img_pixels = feature_dict['height'] * feature_dict['weight'] * feature_dict['width']
+    image.set_shape(img_pixels)
+
+    # Save your labels and ID as floating point integers as well
+    label = tf.cast(features['label'], tf.float32)
+    id = tf.cast(features['id'], tf.float32)
+
+    # Peter implenetation below -----------------------------------------------------------------------
+
+    # features = tf.parse_single_example(serialized_example, features=params['pp_options']['feature_dict_read'])
+    #
+    # # Since the image raw data comes in as a string, decode it to a vector of numbers
+    # for field in params['pp_options']['dtype_key']:
+    #     # Decode raw will reinterpret the bytes in the first argument to the type in the second
+    #     images[field] = tf.decode_raw(features[field], params['pp_options']['dtype_key'][field][1])
+    #     images[field] = self.reshape_images(images[field], field, num_classes=self.params['pp_options']['num_classes'],
+    #                                         batch_size=0, squeeze=False)
+    #
+    #     images[field] = tf.cast(images[field], tf.float32)  # Store the image data as float32 type to stop errors
+    #     images['id'] = tf.cast(features['id'], tf.int32)    # Store the Image identifiers as integers.
+
+    # Note peter likes using a 2x2 array to store parameters. Not a bad idea to use over tf FLAGS
+
+    return image, label, id
+
+def randomize_batch(images, labels, batch_size, randomize_batch=True):
+    """ This function takes our full data tensor of images and creates batches. The batches will be randomized if
+        the Variable is set to true
+        Args:
+            Images: The tensor of all the images loaded
+            randomize_batch: Whether to randomize or not
+        Returns:
+            train: a tensor of """
+
+    # First implement the version with randomization:
+    if randomize_batch==True:
+        train = {}      # To store our training images as a dictionary of batches
+        min_after_dq = 16       # Min elements to queue after a dequeue to ensure good mixing
+        capacity = min_after_dq + 3*batch_size      # max # of elements in the queue
+        keys, tensors = zip(*images.items())
+
+        # This function creates batches by randomly shuffling the input tensors. returns a dict of tensors
+        shuffled = tf.train.shuffle_batch(tensors, batch_size=batch_size,
+                                              capacity=capacity, min_after_dequeue=min_after_dq)
+
+        # Merge keys and shuffled into a tuple and set to equal. (I thought zip does this automatically?)
+        for key, shuffle in zip(keys, shuffled): train[key] = shuffle
+
+    else:   # Now the version without.
+        train = images
+
+    return train

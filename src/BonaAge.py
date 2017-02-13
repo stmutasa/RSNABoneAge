@@ -23,15 +23,12 @@ FLAGS = tf.app.flags.FLAGS
 
 # Define some of the immutable variables
 tf.app.flags.DEFINE_integer('batch_size', 4, """Number of images to process in a batch.""")
-tf.app.flags.DEFINE_string('data_dir', 'Data', """Path to the data directory.""")
+tf.app.flags.DEFINE_string('data_dir', 'data/raw', """Path to the data directory.""")
 tf.app.flags.DEFINE_boolean('use_fp16', False, """Train the model using fp16.""")
 tf.app.flags.DEFINE_float('keep_prob', 0.5, """probability of dropping out a neuron""")
 
 # Maybe define lambda for the regularalization penalty in the loss function ("weight decay" in tensorflow)
 # Maybe define whether to use L1 or L2 regularization
-
-# To Do: Functions to create still:
-# Distorted_inputs, inputs
 
 #Global constants described in the input file to handle input sizes etc
 IMAGE_SIZE = 0
@@ -266,3 +263,14 @@ def _add_loss_summaries(total_loss):
             tf.summary.scalar(l.op.name, loss_averages.average(l))
 
         return loss_averages_op
+
+def inputs():
+    """ This function loads our raw inputs, processes them to a protobuffer that is then saved and
+        loads the protobuffer into a batch of tensors """
+
+    # First load the raw data. May need to loop the image part
+    data_dir = [os.path.join(FLAGS.data_dir, '%d.jpg' % i) for i in xrange(3127, 7294)]
+    image_raw = Input.read_image(data_dir)                  # Returns numpy array with the specified image
+
+    label_dir = os.path.join(FLAGS.data_dir, 'handdictionary')
+    label_raw = Input.read_labels(label_dir)
