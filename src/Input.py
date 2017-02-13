@@ -138,7 +138,7 @@ def img_protobuf(images, labels, num_examples, name):
 
     return
 
-def load_protobuf(filename_queue):
+def load_protobuf(num_epochs, input_name):
     """ This function loads the previously saved protocol buffer and converts it's entries in to a Tensor for use
         in Training. For now, define the variables and dictionaries here locally and define Peters params[] class later
         Args
@@ -148,7 +148,8 @@ def load_protobuf(filename_queue):
 
     # Outputs strings (filenames) to a queue for an input pipeline can do this in train and pass to this function
     # Will generate a random shuffle of the string tensors each epoch
-    filename_queue = tf.train.string_input_producer([params['tf_file']], num_epochs=params['num_epochs'])
+    filenames = os.path.join(FLAGS.input_folder, input_name + '.tfrecords')  # filenames for the protobuf
+    filename_queue = tf.train.string_input_producer(filenames, num_epochs=num_epochs)
 
     reader = tf.TFRecordReader()        # Instantializes a TFRecordReader which outputs records from a TFRecords file
     _, serialized_example = reader.read(filename_queue)    # Returns the next record (key:value) produced by the reader
