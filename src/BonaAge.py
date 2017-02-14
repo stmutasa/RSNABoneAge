@@ -293,5 +293,6 @@ def inputs():
     labels = Input.read_labels(label_dir)  # Add the dictionary of labels we have
 
     # Part 2: Save the images and labels to protobuf
+    Input.img_protobuf(images, labels, FLAGS.num_examples, )
 
     # Part 3: Load the protobuff and randomize batches

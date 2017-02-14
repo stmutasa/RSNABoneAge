@@ -38,7 +38,7 @@ tf.app.flags.DEFINE_integer('num_test_examples', 500, """The amount of examples 
 # Define filename for saving the image protobuffers
 # Raw data is jpegs numbered from 3128 to 7293 with some entries missing
 tf.app.flags.DEFINE_string('input_folder', 'data/raw', """Folder where our raw inputs are stored""")
-tf.app.flags.DEFINE_string('records_file', 'data/tfrecords.protobuf', """What to call our records protobuf""")
+tf.app.flags.DEFINE_string('records_file', 'data', """Where to store our records protobuf""")
 
 # Functions to define:
 # Write image and label to TFRecords
@@ -95,6 +95,44 @@ def pre_process_image(image, input_size=[FLAGS.input_width, FLAGS.input_height],
     return image
 
 
+def img_protobuf(images, labels, num_examples, name):
+    """ Combines the images and labels given and saves them to a TFRecords protocol buffer
+        Will call this function one time each to save a training, validation and test set.
+        Combine the image[index] as an element in the nested dictionary
+        Args:
+            Images: A Dictionary of our source images
+            Labels: A 2D Dictionary with image id:{x,y,z} pairs """
+
+    if images.shape[0] != num_examples:         # Check to see if batch size (# egs) matches the label vector size
+        raise ValueError('Images size %d does not match label size %d.' % (images.shape[0], num_examples))
+
+    # Next we need to store the original image dimensions for when we restore the protobuf binary to a usable form
+    rows = images[0].shape[1]
+    columns = images[0].shape[2]
+    depth = images[0].shape[3]
+
+    filenames = os.path.join(FLAGS.records_file, name + '.tfrecords') # Set the filenames for the protobuf
+
+    # Define the class we will use to write the records to the .tfrecords protobuf. the init opens the file for writing
+    writer = tf.python_io.TFRecordWriter(filenames)
+
+    # Loop through each example and append the protobuf with the specified features
+    for index, feature in labels.iter():
+        # First create our dictionary of values to store: Added some dimensions values that may be useful later on
+        data = { 'data': _bytes_feature(images[index]),
+                 'label1': _bytes_feature(labels[index]['Reading1']),'label2': _bytes_feature(labels[index]['Reading2']),
+                 'height': _int64_feature(rows),'width': _int64_feature(columns), 'depth': _int64_feature(depth)}
+
+
+        example = tf.train.Example(features=tf.train.Features(feature=create_feature_dict(data,index)))
+        writer.write(example.SerializeToString())    # Converts data to serialized string and writes it in the protobuf
+
+    writer.close()      # Close the file after writing
+
+    return
+
+
+
 def create_feature_dict(data_to_write, id=None):
     """ Create the features of each image:label pair we want to save to our TFRecord protobuf here instead of inline"""
     feature_dict_write = {}     # initialize an empty dictionary
@@ -105,37 +143,6 @@ def create_feature_dict(data_to_write, id=None):
 
     return feature_dict_write
 
-
-def img_protobuf(images, labels, num_examples, name):
-    """ Combines the images and labels given and saves them to a TFRecords protocol buffer
-        Will call this function one time each to save a training, validation and test set"""
-
-    if images.shape[0] != num_examples:         # Check to see if batch size (# egs) matches the label vector size
-        raise ValueError('Images size %d does not match label size %d.' % (images.shape[0], num_examples))
-
-    # Next we need to store the original image dimensions for when we restore the protobuf binary to a usable form
-    rows = images.shape[1]
-    columns = images.shape[2]
-    depth = images.shape[3]
-
-    filenames = os.path.join(FLAGS.input_folder, name + '.tfrecords') # Set the filenames for the protobuf
-
-    # Define the class we will use to write the records to the .tfrecords protobuf. the init opens the file for writing
-    writer = tf.python_io.TFRecordWriter(filenames)
-
-    # Loop through each example and append the protobuf with the specified features
-    for index in range(num_examples):
-        # First create our dictionary of values to store: Added some dimensions values that may be useful later on
-        data = { 'data': _bytes_feature(images[index]), 'label': _int64_feature(int(labels[index])),
-                 'height': _int64_feature(rows),'width': _int64_feature(columns), 'depth': _int64_feature(depth)}
-
-
-        example = tf.train.Example(features=tf.train.Features(feature=create_feature_dict(data,index)))
-        writer.write(example.SerializeToString())    # Converts data to serialized string and writes it in the protobuf
-
-    writer.close()      # Close the file after writing
-
-    return
 
 def load_protobuf(num_epochs, input_name):
     """ This function loads the previously saved protocol buffer and converts it's entries in to a Tensor for use
@@ -156,9 +163,10 @@ def load_protobuf(num_epochs, input_name):
     # Tutorial implementation Below --------------------------------------------------------------
 
     # Create the feature dictionary to store the variables we will retrieve using the parse
-    feature_dict = {'id':{'data': tf.FixedLenFeature([], tf.string), 'label': tf.FixedLenFeature([], tf.int64),
-                    'height': tf.FixedLenFeature([], tf.int64), 'width': tf.FixedLenFeature([], tf.int64),
-                    'depth': tf.FixedLenFeature([], tf.int64)}}
+    feature_dict = {'id':{'data': tf.FixedLenFeature([], tf.string),
+                          'label1': tf.FixedLenFeature([], tf.float32),'label2': tf.FixedLenFeature([], tf.float32),
+                          'height': tf.FixedLenFeature([], tf.int64), 'width': tf.FixedLenFeature([], tf.int64),
+                          'depth': tf.FixedLenFeature([], tf.int64)}}
     # Q? Does defining the value in the feature dict as a type force that type on feed? if so why use decode raw
 
     # Parses one protocol buffer file into the features dictionary which maps keys to tensors with the data
