@@ -13,7 +13,7 @@ import os
 import tensorflow as tf
 import cv2                            # Open CV for image manipulation and importing
 import numpy as np
-import cPickle  as pickle             # Module for serializing data and saving it to disk for use in another script
+import pickle         # Module for serializing data and saving it to disk for use in another script
 
 FLAGS = tf.app.flags
 
@@ -65,10 +65,9 @@ def read_image(filename,grayscale=True):
 
 
 def read_labels(filename):
-    """ Loads a list of serialized labels saved using the pickle module """
-    with open(filename, 'rb') as file_holder:
-        labels = pickle.load(file_holder)
-
+    """ Loads a list of serialized labels saved using the pickle module. Returns a dictionary """
+    file_holder = open(filename, 'rb')
+    labels = pickle.load(file_holder)
     return labels
 
 
