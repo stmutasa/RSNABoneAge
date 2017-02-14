@@ -66,8 +66,9 @@ def read_image(filename,grayscale=True):
 
 def read_labels(filename):
     """ Loads a list of serialized labels saved using the pickle module. Returns a dictionary """
-    file_holder = open(filename, 'rb')
-    labels = pickle.load(file_holder)
+    with open(filename, 'rb') as file_holder:
+        labels = pickle.load(file_holder)
+
     return labels
 
 
@@ -154,7 +155,7 @@ def load_protobuf(num_epochs, input_name):
 
     # Outputs strings (filenames) to a queue for an input pipeline can do this in train and pass to this function
     # Will generate a random shuffle of the string tensors each epoch
-    filenames = os.path.join(FLAGS.input_folder, input_name + '.tfrecords')  # filenames for the protobuf
+    filenames = os.path.join(FLAGS.records_file, input_name + '.tfrecords')  # filenames for the protobuf
     filename_queue = tf.train.string_input_producer(filenames, num_epochs=num_epochs)
 
     reader = tf.TFRecordReader()        # Instantializes a TFRecordReader which outputs records from a TFRecords file
@@ -172,8 +173,14 @@ def load_protobuf(num_epochs, input_name):
     # Parses one protocol buffer file into the features dictionary which maps keys to tensors with the data
     features = tf.parse_single_example(serialized_example, features=feature_dict)
 
-    # Change the raw image data to a floating point integer tensor stored in image
-    image = tf.decode_raw(features['data'], tf.float32)
+    # Change the raw image data to floating point integer tensors stored in image
+    # To do: Generalize this
+    image = {}
+    for index, value in features.iter():
+        image[index] = tf.decode_raw(features['data'], tf.float32)      # Return a tensor with images as a float
+        image[index] = image.reshape(image[index], [-1])                # flatten the image data to a linear array
+
+    # Images is now a dictionary of index: flattened tensor pairs
 
     # Set the shape of the tensor for the image based on the values provided
     img_pixels = feature_dict['height'] * feature_dict['weight'] * feature_dict['width']
@@ -196,8 +203,6 @@ def load_protobuf(num_epochs, input_name):
     #
     #     images[field] = tf.cast(images[field], tf.float32)  # Store the image data as float32 type to stop errors
     #     images['id'] = tf.cast(features['id'], tf.int32)    # Store the Image identifiers as integers.
-
-    # Note peter likes using a 2x2 array to store parameters. Not a bad idea to use over tf FLAGS
 
     return image, label, id
 

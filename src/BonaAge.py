@@ -273,7 +273,7 @@ def _add_loss_summaries(total_loss):
     return loss_averages_op
 
 
-def inputs():
+def inputs(num_epochs):
     """ This function loads our raw inputs, processes them to a protobuffer that is then saved and
         loads the protobuffer into a batch of tensors """
 
@@ -293,6 +293,7 @@ def inputs():
     labels = Input.read_labels(label_dir)  # Add the dictionary of labels we have
 
     # Part 2: Save the images and labels to protobuf
-    Input.img_protobuf(images, labels, FLAGS.num_examples, )
+    Input.img_protobuf(images, labels, FLAGS.num_examples, 'bonageproto')
 
     # Part 3: Load the protobuff and randomize batches
+    Input.load_protobuf(num_epochs, 'bonageproto')
