@@ -14,6 +14,7 @@ import tensorflow as tf
 import cv2                            # Open CV for image manipulation and importing
 import numpy as np
 import pickle         # Module for serializing data and saving it to disk for use in another script
+import random
 
 FLAGS = tf.app.flags
 
@@ -57,7 +58,7 @@ def read_image(filename,grayscale=True):
         Automatically converts to greyscale unless specified """
 
     if grayscale==True:     # Make the image into a greyscale by default
-        image = cv2.imread(filename, [cv2.CV_LOAD_IMAGE_GREYSCALE])
+        image = cv2.imread(filename, 0)
     else:                   # Else keep all the color channels
         image = cv2.imread(filename)
 
@@ -77,13 +78,13 @@ def pre_process_image(image, input_size=[FLAGS.input_width, FLAGS.input_height],
     """ Pre processes the image: Resizes based on the specified input size, padding, and interpolation method """
 
     # Center the data and divide by the standard deviation
-    image = (image - np.mean(image)) / np.std(image)
+    # image = (image - np.mean(image)) / np.std(image) removed, will have to do later to store smaller protobuf
 
     # Resize the image
     resize_dims = np.array(input_size) - np.array(padding)*2    # Different size arrays will be broadcast to the same
     pad_tuple = ((padding[0],padding[0]), (padding[1], padding[1]), (0, 0)) # set bilateral padding in X,Y and Z dims
     image = cv2.resize(image,tuple(resize_dims),interpolation=interpolation) # Use openCV to resize image
-    image = np.pad(image, pad_tuple, mode='reflect') # pad all the dimensions with the pad-tuple
+    # image = np.pad(image, pad_tuple, mode='reflect') # pad all the dimensions with the pad-tuple currently not working wtf
 
     # If defined, use masking to turn 'empty space' in the image into invalid entries that won't be calculated
     if masking==True:
@@ -96,21 +97,24 @@ def pre_process_image(image, input_size=[FLAGS.input_width, FLAGS.input_height],
     return image
 
 
-def img_protobuf(images, labels, num_examples, name):
+# To make call to bytesfeature work, had to convert images float nparray to string. Had to go back to remove
+# The normalization code in preprocess image
+# Also converted labels to strings and then to bytes to pass
+
+def img_protobuf(images, labels, name):
     """ Combines the images and labels given and saves them to a TFRecords protocol buffer
         Will call this function one time each to save a training, validation and test set.
         Combine the image[index] as an element in the nested dictionary
         Args:
-            Images: A Dictionary of our source images
-            Labels: A 2D Dictionary with image id:{x,y,z} pairs """
-
-    if images.shape[0] != num_examples:         # Check to see if batch size (# egs) matches the label vector size
-        raise ValueError('Images size %d does not match label size %d.' % (images.shape[0], num_examples))
+            images: A Dictionary of our source images
+            labels: A 2D Dictionary with image id:{x,y,z} pairs """
 
     # Next we need to store the original image dimensions for when we restore the protobuf binary to a usable form
-    rows = images[0].shape[1]
-    columns = images[0].shape[2]
-    depth = images[0].shape[3]
+    # Pick a random entry in the images dict of arrays as our size model
+    rows = images[random.choice(list(images.keys()))].shape[0]
+    columns = images[random.choice(list(images.keys()))].shape[1]
+    examples = len(images)
+    # depth = images[0].shape[3]  # Depth is not defined since we have one color channel
 
     filenames = os.path.join(FLAGS.records_file, name + '.tfrecords') # Set the filenames for the protobuf
 
@@ -118,12 +122,18 @@ def img_protobuf(images, labels, num_examples, name):
     writer = tf.python_io.TFRecordWriter(filenames)
 
     # Loop through each example and append the protobuf with the specified features
-    for index, feature in labels.iter():
-        # First create our dictionary of values to store: Added some dimensions values that may be useful later on
-        data = { 'data': _bytes_feature(images[index]),
-                 'label1': _bytes_feature(labels[index]['Reading1']),'label2': _bytes_feature(labels[index]['Reading2']),
-                 'height': _int64_feature(rows),'width': _int64_feature(columns), 'depth': _int64_feature(depth)}
+    for index, feature in labels.items():
+        # Do some workarounds to get the data types to work. This actually seems to work on conversion back
+        image_raw = images[index].tostring()
+        label1_str = '%.2f' % float(labels[index]['Reading1'])  # convert label value from float to string
+        label1_by = label1_str.encode('utf-8')  # Next convert label from string to bytes
+        label2_str = '%.2f' % float(labels[index]['Reading2'])
+        label2_by = label2_str.encode('utf-8')
 
+        # Now create our dictionary of values to store: Added some dimensions values that may be useful later on
+        data = {'data': _bytes_feature(image_raw),
+                'label1': _bytes_feature(label1_by), 'label2': _bytes_feature(label2_by),
+                'height': _int64_feature(rows), 'width': _int64_feature(columns), 'examples': _int64_feature(examples)}
 
         example = tf.train.Example(features=tf.train.Features(feature=create_feature_dict(data,index)))
         writer.write(example.SerializeToString())    # Converts data to serialized string and writes it in the protobuf
@@ -137,7 +147,7 @@ def img_protobuf(images, labels, num_examples, name):
 def create_feature_dict(data_to_write, id=None):
     """ Create the features of each image:label pair we want to save to our TFRecord protobuf here instead of inline"""
     feature_dict_write = {}     # initialize an empty dictionary
-    feature_dict_write['id'] = _int64_feature(id)   # id is the unique identifier of the image, make it an integer
+    feature_dict_write['id'] = _int64_feature(int(id))  # id is the unique identifier of the image, make it an integer
     for key, feature in data_to_write.items():      # Loop over the dictionary and append the feature list for each id
         # To Do Need if statement to keep our already defined int64's as ints and not bytes
         feature_dict_write[key] = _bytes_feature(feature.tostring())
@@ -145,7 +155,7 @@ def create_feature_dict(data_to_write, id=None):
     return feature_dict_write
 
 
-def load_protobuf(num_epochs, input_name):
+def load_protobuf(num_epochs, input_name, batch_size):
     """ This function loads the previously saved protocol buffer and converts it's entries in to a Tensor for use
         in Training. For now, define the variables and dictionaries here locally and define Peters params[] class later
         Args
@@ -175,16 +185,28 @@ def load_protobuf(num_epochs, input_name):
 
     # Change the raw image data to floating point integer tensors stored in image
     # To do: Generalize this
-    image = {}
-    for index, value in features.iter():
-        image[index] = tf.decode_raw(features['data'], tf.float32)      # Return a tensor with images as a float
-        image[index] = image.reshape(image[index], [-1])                # flatten the image data to a linear array
 
-    # Images is now a dictionary of index: flattened tensor pairs
+    image = {}  # This likely has to be a tensor, not a dict
+
+    for index, value in features.items():
+        image[index] = tf.decode_raw(features[index]['data'], tf.float32)  # Return a tensor with images as a float
+
+    # Images is now a dictionary of index: tensor pairs
+
+    # Reshape the images into the desired dimensions
+    height = features['height']
+    width = features['width']
+    depth = features['depth']
+
+    # Convert the image dictionary to a float32 tensor
+    image = tf.cast(image, tf.float32)
+
+    # tf.reshape() creates a new (reshaped) a tensor. tf.set_shape updates the static shape of the tensor
+    image = tf.reshape(image, shape=[batch_size, height, width, depth])
 
     # Set the shape of the tensor for the image based on the values provided
-    img_pixels = feature_dict['height'] * feature_dict['weight'] * feature_dict['width']
-    image.set_shape(img_pixels)
+    # img_pixels = feature_dict['height'] * feature_dict['weight'] * feature_dict['width']
+    # image.set_shape(img_pixels)
 
     # Save your labels and ID as floating point integers as well
     label = tf.cast(features['label'], tf.float32)
@@ -210,7 +232,7 @@ def randomize_batch(images, labels, batch_size, randomize_batch=True):
     """ This function takes our full data tensor of images and creates batches. The batches will be randomized if
         the Variable is set to true
         Args:
-            Images: The tensor of all the images loaded
+            images: The tensor of all the images loaded
             randomize_batch: Whether to randomize or not
         Returns:
             train: a tensor of """

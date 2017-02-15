@@ -12,7 +12,7 @@ _author_ = 'simi'
 
 import os  # for the os type functionality, read write files and manipulate paths
 import re  # regular expression operations for the print statements
-import sys  # access to variables used by the interpreter (which reads and executes python code
+# import sys  # access to variables used by the interpreter (which reads and executes python code
 import glob  # Simple but killer file reading module
 
 import tensorflow as tf
@@ -282,18 +282,23 @@ def inputs(num_epochs):
     images = {}
 
     # First load the raw data using the handy glob library
-    for file_id, key in glob.glob1(FLAGS.data_dir, '*.jpg'):  # Loop through every jpeg in the data directory
-        raw = Input.read_image(file_id)  # First read the image into a numpy array named raw
+    globs = glob.glob(FLAGS.data_dir + '*.jpg')  # Returns a list of filenames
+
+    for file_id in globs:  # Loop through every jpeg in the data directory
+        raw = Input.read_image(file_id)  # First read the image into a unit8 numpy array named raw
         raw = Input.pre_process_image(raw)  # Apply the pre processing of the image
 
         # Append the dictionary with the key: value pair of the basename (not full globname) and processed image
-        images[os.path.basename(file_id)] = raw
+        images[os.path.splitext(os.path.basename(file_id))[0]] = raw
 
     label_dir = os.path.join(FLAGS.data_dir, 'handdictionary')  # The labels dict is saved under handdictionary binary
     labels = Input.read_labels(label_dir)  # Add the dictionary of labels we have
 
-    # Part 2: Save the images and labels to protobuf
-    Input.img_protobuf(images, labels, FLAGS.num_examples, 'bonageproto')
+    # Part 2: Save the images and labels to protobuf -------------------------------
+    Input.img_protobuf(images, labels, 'bonageproto')
 
-    # Part 3: Load the protobuff and randomize batches
-    Input.load_protobuf(num_epochs, 'bonageproto')
+    # Part 3: Load the protobuff and randomize batches -----------------------------
+    Input.load_protobuf(num_epochs, 'bonageproto', FLAGS.batch_size)
+
+    # Part 4: Create randomized batches
+    Input.randomize_batches(images, labels, FLAGS.batch_size)
