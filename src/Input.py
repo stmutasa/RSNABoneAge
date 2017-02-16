@@ -1,4 +1,3 @@
-
 """ Routine for decoding images from the downloaded stack and converting them to usable tensors """
 
 # The functions we will need from python 3.x
@@ -11,9 +10,9 @@ _author_ = 'Simi'
 # Libraries we will use in input.py
 import os
 import tensorflow as tf
-import cv2                            # Open CV for image manipulation and importing
+import cv2  # Open CV for image manipulation and importing
 import numpy as np
-import pickle         # Module for serializing data and saving it to disk for use in another script
+import pickle  # Module for serializing data and saving it to disk for use in another script
 import random
 import glob
 
@@ -42,25 +41,26 @@ tf.app.flags.DEFINE_integer('num_test_examples', 500, """The amount of examples 
 tf.app.flags.DEFINE_string('input_folder', 'data/raw', """Folder where our raw inputs are stored""")
 tf.app.flags.DEFINE_string('records_file', 'data', """Where to store our records protobuf""")
 
+
 # Functions to define:
 # Write image and label to TFRecords
 # Read images and labels from protobuf: Later
 
 def _int64_feature(value):
-  return tf.train.Feature(int64_list=tf.train.Int64List(value=[value]))
+    return tf.train.Feature(int64_list=tf.train.Int64List(value=[value]))
 
 
 def _bytes_feature(value):
-  return tf.train.Feature(bytes_list=tf.train.BytesList(value=[value]))
+    return tf.train.Feature(bytes_list=tf.train.BytesList(value=[value]))
 
 
-def read_image(filename,grayscale=True):
+def read_image(filename, grayscale=True):
     """Reads an image and stores it in a numpy array that is returned.
         Automatically converts to greyscale unless specified """
 
-    if grayscale==True:     # Make the image into a greyscale by default
+    if grayscale:  # Make the image into a greyscale by default
         image = cv2.imread(filename, 0)
-    else:                   # Else keep all the color channels
+    else:  # Else keep all the color channels
         image = cv2.imread(filename)
 
     return image
@@ -82,15 +82,15 @@ def pre_process_image(image, input_size=[FLAGS.input_width, FLAGS.input_height],
     # image = (image - np.mean(image)) / np.std(image) removed, will have to do later to store smaller protobuf
 
     # Resize the image
-    resize_dims = np.array(input_size) - np.array(padding)*2    # Different size arrays will be broadcast to the same
-    pad_tuple = ((padding[0],padding[0]), (padding[1], padding[1]), (0, 0)) # set bilateral padding in X,Y and Z dims
-    image = cv2.resize(image,tuple(resize_dims),interpolation=interpolation) # Use openCV to resize image
+    resize_dims = np.array(input_size) - np.array(padding) * 2  # Different size arrays will be broadcast to the same
+    pad_tuple = ((padding[0], padding[0]), (padding[1], padding[1]), (0, 0))  # set bilateral padding in X,Y and Z dims
+    image = cv2.resize(image, tuple(resize_dims), interpolation=interpolation)  # Use openCV to resize image
     image = np.pad(image, pad_tuple, mode='reflect')  # pad all the dimensions with the pad-tuple
 
     # If defined, use masking to turn 'empty space' in the image into invalid entries that won't be calculated
-    if masking==True:
-        mask = np.zeros(image.shape, 'bool') # if masking, create an array with all values set to false
-        mask = np.pad(mask, pad_tuple, mode='constant', constant_values=(True)) # pad the mask too
+    if masking == True:
+        mask = np.zeros(image.shape, 'bool')  # if masking, create an array with all values set to false
+        mask = np.pad(mask, pad_tuple, mode='constant', constant_values=(True))  # pad the mask too
         if interpolation == cv2.INTER_NEAREST:
             image[mask] = 0
         return image, mask
@@ -113,7 +113,7 @@ def img_protobuf(images, labels, name):
     examples = len(images)
     # depth = images[0].shape[3]  # Depth is not defined since we have one color channel
 
-    filenames = os.path.join(FLAGS.records_file, name + '.tfrecords') # Set the filenames for the protobuf
+    filenames = os.path.join(FLAGS.records_file, name + '.tfrecords')  # Set the filenames for the protobuf
 
     # Define the class we will use to write the records to the .tfrecords protobuf. the init opens the file for writing
     writer = tf.python_io.TFRecordWriter(filenames)
@@ -133,10 +133,10 @@ def img_protobuf(images, labels, name):
 
         feature_data = create_feature_dict(feature_data_pre, index, True)
 
-        example = tf.train.Example(features=tf.train.Features(feature=create_feature_dict(data,index)))
-        writer.write(example.SerializeToString())    # Converts data to serialized string and writes it in the protobuf
+        example = tf.train.Example(features=tf.train.Features(feature=create_feature_dict(data, index)))
+        writer.write(example.SerializeToString())  # Converts data to serialized string and writes it in the protobuf
 
-    writer.close()      # Close the file after writing
+    writer.close()  # Close the file after writing
 
     # Save the feature data dictionary too
     savename = os.path.join(FLAGS.records_file, 'boneageloadict')
@@ -149,7 +149,7 @@ def img_protobuf(images, labels, name):
 def create_feature_dict(data_to_write={}, id=1, restore=False):
     """ Create the features of each image:label pair we want to save to our TFRecord protobuf here instead of inline"""
 
-    if restore == False:  # Do this for the storage dictionary first
+    if not restore:  # Do this for the storage dictionary first
         feature_dict_write = {}  # initialize an empty dictionary
         feature_dict_write['id'] = _int64_feature(
             int(id))  # id is the unique identifier of the image, make it an integer
@@ -166,8 +166,7 @@ def create_feature_dict(data_to_write={}, id=1, restore=False):
         return feature_dict_write
 
     else:  # Else do this to create the restoration dictionary
-        feature_dict_restore = {}
-        feature_dict_restore['id'] = tf.FixedLenFeature([], tf.int64)
+        feature_dict_restore = {'id': tf.FixedLenFeature([], tf.int64)}
         for key, feature in data_to_write.items():
             feature_dict_restore[key] = tf.FixedLenFeature([], tf.string)
 
@@ -188,8 +187,8 @@ def load_protobuf(num_epochs, input_name, return_dict=True):
     filenames = glob.glob(filedir + '*.tfrecords')
     filename_queue = tf.train.string_input_producer(filenames, num_epochs=num_epochs)
 
-    reader = tf.TFRecordReader()        # Instantializes a TFRecordReader which outputs records from a TFRecords file
-    _, serialized_example = reader.read(filename_queue)    # Returns the next record (key:value) produced by the reader
+    reader = tf.TFRecordReader()  # Instantializes a TFRecordReader which outputs records from a TFRecords file
+    _, serialized_example = reader.read(filename_queue)  # Returns the next record (key:value) produced by the reader
 
     # Tutorial implementation Below --------------------------------------------------------------
 

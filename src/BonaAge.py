@@ -48,7 +48,7 @@ TOWER_NAME = 'tower'  # If training on multiple GPU's, prefix all op names with 
 
 def forward_pass(images):
     """ This function builds the network architecture and performs the forward pass
-        Args: Images = our input X
+        Args: Images = our input dictionary
         Returns: Logits (log odds units)
         Use tf.get_variable() in case we have multiple GPU's. get_variable creates or retreives a variable only in the
         scope defined by the block of code under variable_scope. This allows us to reuse variables in each block"""
@@ -107,7 +107,7 @@ def forward_pass(images):
     # The 5th convolutional layer
     with tf.variable_scope('conv5') as scope:  # Define this variable scope as conv1
         kernel = _variable_with_weight_decay('weights', shape=[3, 3, 1024, 1024], wd=0.0)  # Xavier init. No WD
-        conv = tf.nn.conv2d(affine1, kernel, [1, 2, 2, 1], padding='VALID')  # Create a 2D tensor with BATCH_SIZE rows
+        conv = tf.nn.conv2d(norm4, kernel, [1, 2, 2, 1], padding='VALID')  # Create a 2D tensor with BATCH_SIZE rows
         biases = _variable_on_cpu('biases', 1024, tf.constant_initializer(0.0))  # Initialize biases as 0
         pre_activation = tf.nn.bias_add(conv, biases)  # Add conv and biases into one layer
         conv5 = tf.nn.elu(pre_activation, name=scope.name)  # Use ELU to prevent sparsity.
@@ -118,9 +118,25 @@ def forward_pass(images):
 
     # To Do: Maybe apply dropout here
 
+    # The Fc7 layer
+    with tf.variable_scope('fc7') as scope:
+        reshape = tf.reshape(norm5, FLAGS.batch_size, -1)  # Move everything to n by b matrix for a single matmul
+        dim = reshape.get_shape()[1].value  # Get columns for the matrix multiplication
+        weights = _variable_with_weight_decay('weights', shape=[dim, 1024], wd=0.0)
+        biases = _variable_on_cpu('biases', [512], tf.constant_initializer(0.1))
+        fc7 = tf.nn.elu(tf.matmul(reshape, weights) + biases, name=scope.name)  # returns mat of size batch x 512
+        _activation_summary(fc7)
+
+    # The Fc8 layer
+    with tf.variable_scope('fc8') as scope:
+        weights = _variable_with_weight_decay('weights', shape=[1024, 512], wd=0.0)
+        biases = _variable_on_cpu('biases', [256], tf.constant_initializer(0.1))
+        fc8 = tf.nn.elu(tf.matmul(fc7, weights) + biases, name=scope.name)
+        _activation_summary(fc8)
+
     # The linear layer
     with tf.variable_scope('linear') as scope:
-        weights = _variable_with_weight_decay('weights', [1024, FLAGS.num_classes], wd=0.0)
+        weights = _variable_with_weight_decay('weights', [512, FLAGS.num_classes], wd=0.0)
         biases = _variable_on_cpu('biases', [FLAGS.num_classes], tf.constant_initializer(0.0))
         softmax = tf.add(tf.matmul(norm5, weights), biases, name=scope.name)
         _activation_summary(softmax)
@@ -216,7 +232,7 @@ def _activation_summary(x):
     return
 
 
-def _variable_on_cpu(name, shape, initializer):
+def _variable_on_cpu(name: object, shape: object, initializer: object) -> object:
     """ Helper to create a variable stored on CPU memory.
         Why do this? Well if you are using multiple GPU's it might be faster to store some things on the CPU since
         copying from CPU to GPU is faster than GPU to GPU. Can change to let TF decide by deleting the cpu context code
@@ -276,6 +292,8 @@ def _add_loss_summaries(total_loss):
 def inputs(num_epochs):
     """ This function loads our raw inputs, processes them to a protobuffer that is then saved and
         loads the protobuffer into a batch of tensors """
+
+    # To Do: Skip part 1 and 2 if the protobuff already exists
 
     # Part 1: Load the raw images and labels dictionary ---------------------------
     print('------------------------Loading Raw Data...')

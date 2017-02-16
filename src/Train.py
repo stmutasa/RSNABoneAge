@@ -4,10 +4,11 @@ from __future__ import absolute_import      # import multi line and Absolute/Rel
 from __future__ import division             # change the division operator to output float if dividing two integers
 from __future__ import print_function       # use the print function from python 3
 
-from datetime import datetime               # Classes for manipulating the date and time displaying
 import time                                 # to retreive current time
-import tensorflow as tf
+from datetime import datetime  # Classes for manipulating the date and time displaying
+
 import BonaAge
+import tensorflow as tf
 
 _author_ = 'Simi'
 
@@ -33,15 +34,18 @@ def train():
         # Get the tensor that keeps track of step in this graph or create one if not there
         global_step = tf.contrib.framework.get_or_create_global_step()
 
-        # Get the images and labels for our data set here
-
-        # To do images, labels = BonaAge.processed_inputs():
+        # Get a dictionary of our images, id's, and labels here
+        images = BonaAge.inputs(1)
 
         # Build a graph that computes the log odds unit prediction from the inference model (Forward pass)
-        logits = BonaAge.forward_pass (images)
+        logits = BonaAge.forward_pass(images['image'])
 
-        # To do : Calculate the total loss, adding L2 regularization and calculated cross entropy
-        loss = BonaAge.total_loss(logits, labels)
+        # Make our final label the average of the two labels
+        avg_label = tf.add(images['label1'], images['label2'])
+        avg_label = tf.divide(avg_label, 2)
+
+        # Calculate the total loss, adding L2 regularization and calculated cross entropy
+        loss = BonaAge.total_loss(logits, avg_label)
 
         # Build the backprop graph to train the model with one batch and update the parameters (Backward pass)
         train_op = BonaAge.backward_pass(loss, global_step)
@@ -80,30 +84,49 @@ def train():
                                                   _LoggerHook()],save_checkpoint_secs=FLAGS.checkpoint_steps,
                                            save_summaries_steps=FLAGS.summary_steps,
                                            config=tf.configProto(log_device_placement=FLAGS.log_device_placement)) as mon_sess:
-        while not mon_sess.should_stop():   # For the training coordinator. Only one thread here so we're good
-            mon_sess.run(train_op)          # Runs the operations and evaluates tensors in train_op - One cycle for this batch
+        # Initialize the variables
+        mon_sess.run(tf.global_variables_initializer(), tf.local_variables_initializer())
 
-# What does this shit do? Who knows, but make sure it's in there or the code won't work
+        # Initialize the enqueue threads
+        coord = tf.train.Coordinator()
+        threads = tf.train.start_queue_runners(sess=mon_sess, coord=coord)
+
+        try:
+            while not mon_sess.should_stop():  # For the training coordinator. Only one thread here so we're good
+                mon_sess.run(
+                    train_op)  # Runs the operations and evaluates tensors in train_op - One cycle for this batch
+
+        except tf.errors.OutOfRangeError:
+            print('Done with Training - Epoch limit reached')
+        finally:
+            # Stop threads when done
+            coord.request_stop()
+
+        # Wait for threads to finish before closing session
+        coord.join()
+        mon_sess.close()
+
+
+def cst(coord=None, sess=None, threads=None):
+    """ This function coordinates the execution of the graph"""
+    if coord is None:
+        coord = tf.train.Coordinator()  # Coordinates the timing and termination of threads
+        sess = tf.Session()
+        sess.run([tf.global_variables_initializer(), tf.local_variables_initializer()])  # Runs one "step"
+        threads = tf.train.start_queue_runners(sess=sess, coord=coord)  # Starts the queue runners in the graph
+        return coord, sess, threads
+    else:
+        coord.request_stop()  # Request a stop of threads. should_stop() will return True
+        coord.join(threads)  # Waits for threads to terminate
+        sess.close()
+        return
+
 
 def main(argv=None):  # pylint: disable=unused-argument
     if tf.gfile.Exists(FLAGS.train_dir):
         tf.gfile.DeleteRecursively(FLAGS.train_dir)
     tf.gfile.MakeDirs(FLAGS.train_dir)
     train()
-
-def cst(coord=None, sess=None, threads=None):
-    """ This function coordinates the execution of the graph"""
-    if coord is None:
-        coord = tf.train.Coordinator() # Coordinates the timing and termination of threads
-        sess = tf.Session()
-        sess.run([tf.global_variables_initializer(), tf.local_variables_initializer()])     # Runs one "step"
-        threads = tf.train.start_queue_runners(sess=sess, coord=coord)      # Starts the queue runners in the graph
-        return coord, sess, threads
-    else:
-        coord.request_stop()    # Request a stop of threads. should_stop() will return True
-        coord.join(threads)     # Waits for threads to terminate
-        sess.close()
-        return
 
 if __name__ == '__main__':
     tf.app.run()
