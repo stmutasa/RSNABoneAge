@@ -278,13 +278,16 @@ def inputs(num_epochs):
         loads the protobuffer into a batch of tensors """
 
     # Part 1: Load the raw images and labels dictionary ---------------------------
-
+    print('------------------------Loading Raw Data...')
     images = {}
 
     # First load the raw data using the handy glob library
     globs = glob.glob(FLAGS.data_dir + '*.jpg')  # Returns a list of filenames
 
+    i = 0
     for file_id in globs:  # Loop through every jpeg in the data directory
+        i += 1
+        if i % 100 == 0: print('     %i Images Loaded' % i)  # Just to update us
         raw = Input.read_image(file_id)  # First read the image into a unit8 numpy array named raw
         raw = Input.pre_process_image(raw)  # Apply the pre processing of the image
 
@@ -295,10 +298,16 @@ def inputs(num_epochs):
     labels = Input.read_labels(label_dir)  # Add the dictionary of labels we have
 
     # Part 2: Save the images and labels to protobuf -------------------------------
+    print('------------------------------------Saving images to protobuf...')
     Input.img_protobuf(images, labels, 'bonageproto')
 
-    # Part 3: Load the protobuff and randomize batches -----------------------------
-    Input.load_protobuf(num_epochs, 'bonageproto', FLAGS.batch_size)
+    # Part 3: Load the protobuff  -----------------------------
+    print('----------------------------------------Loading Protobuff...')
+    data = {}
+    data = Input.load_protobuf(num_epochs, 'bonageproto', True)
 
     # Part 4: Create randomized batches
-    Input.randomize_batches(images, labels, FLAGS.batch_size)
+    print('----------------------------------Creating and randomizing batches...')
+    Input.randomize_batches(data, FLAGS.batch_size)
+
+    return data
