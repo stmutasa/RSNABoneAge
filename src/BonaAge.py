@@ -23,10 +23,11 @@ FLAGS = tf.app.flags.FLAGS
 
 # Define some of the immutable variables
 tf.app.flags.DEFINE_integer('batch_size', 4, """Number of images to process in a batch.""")
-tf.app.flags.DEFINE_string('data_dir', 'data/raw', """Path to the data directory.""")
+tf.app.flags.DEFINE_string('data_dir', 'data/raw/', """Path to the data directory.""")
 tf.app.flags.DEFINE_boolean('use_fp16', False, """Train the model using fp16.""")
 tf.app.flags.DEFINE_float('keep_prob', 0.5, """probability of dropping out a neuron""")
 tf.app.flags.DEFINE_integer('num_examples', 1384, """The amount of source images""")
+tf.app.flags.DEFINE_integer('num_classes', 32, """ The number of classes """)
 
 # Maybe define lambda for the regularalization penalty in the loss function ("weight decay" in tensorflow)
 # Maybe define whether to use L1 or L2 regularization
@@ -34,12 +35,12 @@ tf.app.flags.DEFINE_integer('num_examples', 1384, """The amount of source images
 # Global constants described in the input file to handle input sizes etc
 IMAGE_SIZE = 0
 NUM_CLASSES = 0
-NUM_EXAMPLES_PER_EPOCH_FOR_TRAIN = 0
+NUM_EXAMPLES_PER_EPOCH_FOR_TRAIN = 100
 NUM_EXAMPLES_PER_EPOCH_FOR_EVAL = 0
 
 # Constants we will use if we decide to use decaying learning rate
 MOVING_AVERAGE_DECAY = 0.9999  # The decay to use for the moving average. (RMSProp)
-NUM_EPOCHS_PER_DECAY = 350.0  # Epochs after which learning rate decays.
+NUM_EPOCHS_PER_DECAY = 2.0  # Epochs after which learning rate decays.
 LEARNING_RATE_DECAY_FACTOR = 1.0  # Learning rate decay factor.
 INITIAL_LEARNING_RATE = 0.01  # Initial learning rate.
 
@@ -119,26 +120,26 @@ def forward_pass(images):
     # To Do: Maybe apply dropout here
 
     # The Fc7 layer
-    with tf.variable_scope('fc7') as scope:
-        reshape = tf.reshape(norm5, FLAGS.batch_size, -1)  # Move everything to n by b matrix for a single matmul
+    with tf.variable_scope('linear1') as scope:
+        reshape = tf.reshape(norm5, [FLAGS.batch_size, -1])  # Move everything to n by b matrix for a single matmul
         dim = reshape.get_shape()[1].value  # Get columns for the matrix multiplication
         weights = _variable_with_weight_decay('weights', shape=[dim, 1024], wd=0.0)
-        biases = _variable_on_cpu('biases', [512], tf.constant_initializer(0.1))
+        biases = _variable_on_cpu('biases', [1024], tf.constant_initializer(0.1))
         fc7 = tf.nn.elu(tf.matmul(reshape, weights) + biases, name=scope.name)  # returns mat of size batch x 512
         _activation_summary(fc7)
 
     # The Fc8 layer
-    with tf.variable_scope('fc8') as scope:
+    with tf.variable_scope('linear2') as scope:
         weights = _variable_with_weight_decay('weights', shape=[1024, 512], wd=0.0)
-        biases = _variable_on_cpu('biases', [256], tf.constant_initializer(0.1))
+        biases = _variable_on_cpu('biases', [512], tf.constant_initializer(0.1))
         fc8 = tf.nn.elu(tf.matmul(fc7, weights) + biases, name=scope.name)
         _activation_summary(fc8)
 
     # The linear layer
-    with tf.variable_scope('linear') as scope:
-        weights = _variable_with_weight_decay('weights', [512, FLAGS.num_classes], wd=0.0)
+    with tf.variable_scope('softmax') as scope:
+        weights = _variable_with_weight_decay('weights', shape=[512, FLAGS.num_classes], wd=0.0)
         biases = _variable_on_cpu('biases', [FLAGS.num_classes], tf.constant_initializer(0.0))
-        softmax = tf.add(tf.matmul(norm5, weights), biases, name=scope.name)
+        softmax = tf.add(tf.matmul(fc8, weights), biases, name=scope.name)
         _activation_summary(softmax)
 
     return softmax  # Return whatever the name of the final logits variable is
@@ -151,13 +152,15 @@ def total_loss(logits, labels):
             labels the true input labels, a 1-D tensor with 1 value for each image in the batch
         Returns:
             Your loss value as a Tensor (float)"""
-    labels = tf.cast(labels, tf.int64)  # Changes the labels input to a 64 bit integer
+    labels = tf.cast(labels, tf.float32)  # Changes the labels input to a 64 bit integer
     # use the sparse version of cross entropy when each class true label is exclusive (1 for correct class, 0 ee)
     cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=labels, logits=logits,
                                                                    name='cross_entropy_per_example')
 
     # The function above returns a matrix, the one below computes the mean of the values in the returned matrix
     cross_entropy_mean = tf.reduce_mean(cross_entropy, name='cross_entropy')
+
+    # Add a comparison of the cross entropy mean to the labels here and add to collection
 
     # Adds cross entropy mean to the graph collection 'losses'. Collections are basically persistent variables you can
     # retreive later at any time
@@ -294,38 +297,42 @@ def inputs(num_epochs):
         loads the protobuffer into a batch of tensors """
 
     # To Do: Skip part 1 and 2 if the protobuff already exists
+    if not os.path.isfile('data/boneageproto.tfrecords') and not os.path.isfile('data/boneageloadict'):
 
-    # Part 1: Load the raw images and labels dictionary ---------------------------
-    print('------------------------Loading Raw Data...')
-    images = {}
+        # Part 1: Load the raw images and labels dictionary ---------------------------
+        print('----------------------No existing records -- Loading Raw Data...')
+        images = {}
 
-    # First load the raw data using the handy glob library
-    globs = glob.glob(FLAGS.data_dir + '*.jpg')  # Returns a list of filenames
+        # First load the raw data using the handy glob library
+        globs = glob.glob(FLAGS.data_dir + '*.jpg')  # Returns a list of filenames
+        print(globs)
+        i = 0
+        for file_id in globs:  # Loop through every jpeg in the data directory
+            i += 1
+            if i % 100 == 0: print('     %i Images Loaded' % i)  # Just to update us
+            raw = Input.read_image(file_id)  # First read the image into a unit8 numpy array named raw
+            raw = Input.pre_process_image(raw)  # Apply the pre processing of the image
 
-    i = 0
-    for file_id in globs:  # Loop through every jpeg in the data directory
-        i += 1
-        if i % 100 == 0: print('     %i Images Loaded' % i)  # Just to update us
-        raw = Input.read_image(file_id)  # First read the image into a unit8 numpy array named raw
-        raw = Input.pre_process_image(raw)  # Apply the pre processing of the image
+            # Append the dictionary with the key: value pair of the basename (not full globname) and processed image
+            images[os.path.splitext(os.path.basename(file_id))[0]] = raw
 
-        # Append the dictionary with the key: value pair of the basename (not full globname) and processed image
-        images[os.path.splitext(os.path.basename(file_id))[0]] = raw
+        label_dir = os.path.join(FLAGS.data_dir,
+                                 'handdictionary')  # The labels dict is saved under handdictionary binary
+        labels = Input.read_labels(label_dir)  # Add the dictionary of labels we have
 
-    label_dir = os.path.join(FLAGS.data_dir, 'handdictionary')  # The labels dict is saved under handdictionary binary
-    labels = Input.read_labels(label_dir)  # Add the dictionary of labels we have
+        # Part 2: Save the images and labels to protobuf -------------------------------
+        print('------------------------------------Saving images to records...')
+        Input.img_protobuf(images, labels, 'bonageproto')
 
-    # Part 2: Save the images and labels to protobuf -------------------------------
-    print('------------------------------------Saving images to protobuf...')
-    Input.img_protobuf(images, labels, 'bonageproto')
+    else:
+        print('-------------------------Previously saved records found! Loading...')
 
     # Part 3: Load the protobuff  -----------------------------
     print('----------------------------------------Loading Protobuff...')
-    data = {}
     data = Input.load_protobuf(num_epochs, 'bonageproto', True)
 
     # Part 4: Create randomized batches
     print('----------------------------------Creating and randomizing batches...')
-    Input.randomize_batches(data, FLAGS.batch_size)
+    data = Input.randomize_batches(data, FLAGS.batch_size)
 
     return data

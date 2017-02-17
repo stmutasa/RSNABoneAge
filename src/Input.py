@@ -13,33 +13,21 @@ import tensorflow as tf
 import cv2  # Open CV for image manipulation and importing
 import numpy as np
 import pickle  # Module for serializing data and saving it to disk for use in another script
-import random
 import glob
 
-FLAGS = tf.app.flags
-
-# Define image sizes and color channels for the image data
-tf.app.flags.DEFINE_integer('image_width', 256, """Width of the images.""")
-tf.app.flags.DEFINE_integer('image_height', 256, """Height of the images.""")
-tf.app.flags.DEFINE_integer('image_colors', 1, """Color channels of the images.""")
-
 # Define the dimensions of our input data
-tf.app.flags.DEFINE_integer('input_width', 256, """Width of the images.""")
-tf.app.flags.DEFINE_integer('input_height', 256, """Height of the images.""")
-tf.app.flags.DEFINE_integer('input_colors', 3, """Color channels of the images.""")
-
-# How many classes you will have in the source data
-tf.app.flags.DEFINE_integer('num_classes', 32, """The number of classes in the data set""")
+image_width = 256,  # """Width of the images.""")
+image_height = 256,  # """Height of the images.""")
 
 # Define the sizes of the data set
-tf.app.flags.DEFINE_integer('num_training_examples', 2000, """The amount of examples in the training set""")
-tf.app.flags.DEFINE_integer('num_eval_examples', 100, """The amount of examples in the evaluation data set""")
-tf.app.flags.DEFINE_integer('num_test_examples', 500, """The amount of examples set aside for testing""")
+num_training_examples = 2000  # """The amount of examples in the training set""")
+num_eval_examples = 100,  # """The amount of examples in the evaluation data set""")
+num_test_examples = 500  # """The amount of examples set aside for testing""")
 
 # Define filename for saving the image protobuffers
 # Raw data is jpegs numbered from 3128 to 7293 with some entries missing
-tf.app.flags.DEFINE_string('input_folder', 'data/raw', """Folder where our raw inputs are stored""")
-tf.app.flags.DEFINE_string('records_file', 'data', """Where to store our records protobuf""")
+input_folder = 'data/raw'  # Folder where our raw inputs are stored""")
+records_file = 'data'  # """Where to store our records protobuf""")
 
 
 # Functions to define:
@@ -74,7 +62,7 @@ def read_labels(filename):
     return labels
 
 
-def pre_process_image(image, input_size=[FLAGS.input_width, FLAGS.input_height], padding=[0, 0],
+def pre_process_image(image, input_size=[256, 256], padding=[0, 0],
                       interpolation=cv2.INTER_LINEAR, masking=False):
     """ Pre processes the image: Resizes based on the specified input size, padding, and interpolation method """
 
@@ -85,7 +73,7 @@ def pre_process_image(image, input_size=[FLAGS.input_width, FLAGS.input_height],
     resize_dims = np.array(input_size) - np.array(padding) * 2  # Different size arrays will be broadcast to the same
     pad_tuple = ((padding[0], padding[0]), (padding[1], padding[1]), (0, 0))  # set bilateral padding in X,Y and Z dims
     image = cv2.resize(image, tuple(resize_dims), interpolation=interpolation)  # Use openCV to resize image
-    image = np.pad(image, pad_tuple, mode='reflect')  # pad all the dimensions with the pad-tuple
+    #    image = np.pad(image, pad_tuple, mode='reflect')  # pad all the dimensions with the pad-tuple OHNOES
 
     # If defined, use masking to turn 'empty space' in the image into invalid entries that won't be calculated
     if masking == True:
@@ -108,18 +96,21 @@ def img_protobuf(images, labels, name):
 
     # Next we need to store the original image dimensions for when we restore the protobuf binary to a usable form
     # Pick a random entry in the images dict of arrays as our size model
-    rows = images[random.choice(list(images.keys()))].shape[0]
-    columns = images[random.choice(list(images.keys()))].shape[1]
+    # rows = images[random.choice(list(images.keys()))].shape[0]
+    # columns = images[random.choice(list(images.keys()))].shape[1]
+    rows = 256
+    columns = 256
     examples = len(images)
     # depth = images[0].shape[3]  # Depth is not defined since we have one color channel
 
-    filenames = os.path.join(FLAGS.records_file, name + '.tfrecords')  # Set the filenames for the protobuf
+    filenames = os.path.join(records_file, name + '.tfrecords')  # Set the filenames for the protobuf
 
     # Define the class we will use to write the records to the .tfrecords protobuf. the init opens the file for writing
     writer = tf.python_io.TFRecordWriter(filenames)
 
     # Loop through each example and append the protobuf with the specified features
     for index, feature in labels.items():
+        if index not in images: continue  # Since we deleted some images, some of the labels won't exist
         # Create our dictionary of values to store: Added some dimensions values that may be useful later on
         data = {'data': images[index],
                 'label1': labels[index]['Reading1'], 'label2': labels[index]['Reading2'],
@@ -139,7 +130,7 @@ def img_protobuf(images, labels, name):
     writer.close()  # Close the file after writing
 
     # Save the feature data dictionary too
-    savename = os.path.join(FLAGS.records_file, 'boneageloadict')
+    savename = os.path.join(records_file, 'boneageloadict')
     with open(savename, 'r+b') as file_handle:
         pickle._dump(feature_data, file_handle)
 
@@ -183,7 +174,7 @@ def load_protobuf(num_epochs, input_name, return_dict=True):
 
     # Outputs strings (filenames) to a queue for an input pipeline can do this in train and pass to this function
     # Will generate a random shuffle of the string tensors each epoch
-    filedir = os.path.join(FLAGS.records_file, input_name)  # filenames for the protobuf
+    filedir = os.path.join(records_file, input_name)  # filenames for the protobuf
     filenames = glob.glob(filedir + '*.tfrecords')
     filename_queue = tf.train.string_input_producer(filenames, num_epochs=num_epochs)
 
@@ -193,7 +184,7 @@ def load_protobuf(num_epochs, input_name, return_dict=True):
     # Tutorial implementation Below --------------------------------------------------------------
 
     # Restore the feature dictionary to store the variables we will retrieve using the parse
-    loadname = os.path.join(FLAGS.records_file, 'boneageloadict')
+    loadname = os.path.join(records_file, 'boneageloadict')
     with open(loadname, 'rb') as file_handle:
         feature_dict = pickle.load(file_handle)
 
@@ -208,8 +199,9 @@ def load_protobuf(num_epochs, input_name, return_dict=True):
     image = tf.decode_raw(features['data'], tf.float32)  # Set this examples image to a blank tensor with float data
 
     # Use this to set the size of our image tensor to a 1 dimensional tensor
-    img_pixels = FLAGS.image_width * FLAGS.image_height
-    image.set_shape([img_pixels])
+    img_shape = [256 * 256]
+    image.set_shape(img_shape)
+    image = tf.reshape(image, shape=[256, 256, 1])
 
     # Image is now a handle to : "("DecodeRaw:0", shape=(65536,), dtype=float32)"
 
@@ -231,7 +223,7 @@ def load_protobuf(num_epochs, input_name, return_dict=True):
         return returned_dict
 
 
-def randomize_batch(image_dict, batch_size):
+def randomize_batches(image_dict, batch_size):
     """ This function takes our full data tensors and creates shuffled batches of data.
         Args:
             images_dict: Dictionary of tensors with the labels we created
