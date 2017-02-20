@@ -72,7 +72,7 @@ def pre_process_image(image, input_size=[256, 256], padding=[0, 0],
     # Resize the image
     resize_dims = np.array(input_size) - np.array(padding) * 2  # Different size arrays will be broadcast to the same
     pad_tuple = ((padding[0], padding[0]), (padding[1], padding[1]), (0, 0))  # set bilateral padding in X,Y and Z dims
-    image = cv2.resize(image, tuple(resize_dims), interpolation=interpolation)  # Use openCV to resize image
+    resized_image = cv2.resize(image, tuple(input_size), interpolation=interpolation)  # Use openCV to resize image
     #    image = np.pad(image, pad_tuple, mode='reflect')  # pad all the dimensions with the pad-tuple OHNOES
 
     # If defined, use masking to turn 'empty space' in the image into invalid entries that won't be calculated
@@ -83,7 +83,7 @@ def pre_process_image(image, input_size=[256, 256], padding=[0, 0],
             image[mask] = 0
         return image, mask
 
-    return image
+    return resized_image
 
 
 def img_protobuf(images, labels, name):
@@ -197,19 +197,18 @@ def load_protobuf(num_epochs, input_name, return_dict=True):
     # To do: Generalize this
 
     image = tf.decode_raw(features['data'], tf.float32)  # Set this examples image to a blank tensor with float data
-
     # Use this to set the size of our image tensor to a 1 dimensional tensor
-    img_shape = [256 * 256]
-    image.set_shape(img_shape)
-    image = tf.reshape(image, shape=[256, 256, 1])
+    # img_shape = [256 * 256]
+    # image.set_shape(img_shape)
+    image = tf.reshape(image, shape=[128, 128, 1])
 
     # Image is now a handle to : "("DecodeRaw:0", shape=(65536,), dtype=float32)"
 
-    # Cast all our data to 32 bit floating point units
+    # Cast all our data to 32 bit floating point units. Cannot convert string to number unless you use that function
     image = tf.cast(image, tf.float32)
-    label1 = tf.cast(features['label1'], tf.float32)
-    label2 = tf.cast(features['label2'], tf.float32)
     id = tf.cast(features['id'], tf.float32)
+    label1 = tf.string_to_number(features['label1'], tf.float32)
+    label2 = tf.string_to_number(features['label2'], tf.float32)
 
     # Return data as a dictionary by default, otherwise return it as just the raw sets
     if not return_dict:
