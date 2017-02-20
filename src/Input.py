@@ -62,7 +62,7 @@ def read_labels(filename):
     return labels
 
 
-def pre_process_image(image, input_size=[256, 256], padding=[0, 0],
+def pre_process_image(image, input_size=[512, 512], padding=[0, 0],
                       interpolation=cv2.INTER_LINEAR, masking=False):
     """ Pre processes the image: Resizes based on the specified input size, padding, and interpolation method """
 
@@ -98,8 +98,8 @@ def img_protobuf(images, labels, name):
     # Pick a random entry in the images dict of arrays as our size model
     # rows = images[random.choice(list(images.keys()))].shape[0]
     # columns = images[random.choice(list(images.keys()))].shape[1]
-    rows = 256
-    columns = 256
+    rows = 512
+    columns = 512
     examples = len(images)
     # depth = images[0].shape[3]  # Depth is not defined since we have one color channel
 
@@ -116,20 +116,16 @@ def img_protobuf(images, labels, name):
                 'label1': labels[index]['Reading1'], 'label2': labels[index]['Reading2'],
                 'height': rows, 'width': columns, 'examples': examples}
 
-        # Create a dictionary for values that will be retreived when we restore the protobuf
-        # create the feature data
-        feature_data_pre = {'data': images[index],
-                            'label1': labels[index]['Reading1'], 'label2': labels[index]['Reading2'],
-                            'height': rows, 'width': columns, 'examples': examples}
-
-        feature_data = create_feature_dict(feature_data_pre, index, True)
-
         example = tf.train.Example(features=tf.train.Features(feature=create_feature_dict(data, index)))
-        writer.write(example.SerializeToString())  # Converts data to serialized string and writes it in the protobuf
+        writer.write(example.SerializeToString())  # Converts example to serialized string and writes it in the protobuf
 
     writer.close()  # Close the file after writing
 
-    # Save the feature data dictionary too
+    # Create a dictionary for values that will be retreived when we restore the protobuf
+    # create the feature data
+    feature_data_pre = {'data': None, 'label1': None, 'label2': None, 'height': None, 'width': None, 'examples': None}
+    feature_data = create_feature_dict(feature_data_pre, index, True)
+    # Save the feature data dictionary using pickle
     savename = os.path.join(records_file, 'boneageloadict')
     with open(savename, 'r+b') as file_handle:
         pickle._dump(feature_data, file_handle)
@@ -200,7 +196,7 @@ def load_protobuf(num_epochs, input_name, return_dict=True):
     # Use this to set the size of our image tensor to a 1 dimensional tensor
     # img_shape = [256 * 256]
     # image.set_shape(img_shape)
-    image = tf.reshape(image, shape=[128, 128, 1])
+    image = tf.reshape(image, shape=[256, 256, 1])
 
     # Image is now a handle to : "("DecodeRaw:0", shape=(65536,), dtype=float32)"
 
@@ -230,7 +226,7 @@ def randomize_batches(image_dict, batch_size):
         Returns:
             train: a dictionary of label: batch of data with that label """
 
-    min_dq = 16  # Min elements to queue after a dequeue to ensure good mixing
+    min_dq = 1000  # Min elements to queue after a dequeue to ensure good mixing
     capacity = min_dq + 3 * batch_size  # max number of elements in the queue
     keys, tensors = zip(*image_dict.items())  # Create zip object
 
@@ -242,5 +238,8 @@ def randomize_batches(image_dict, batch_size):
 
     # Recreate the batched data as a dictionary with the new batch size
     for key, shuffle in zip(keys, shuffled): batch_dict[key] = shuffle
+
+    # Display the training images in the visualizer:
+    tf.summary.image('image', batch_dict['image'])
 
     return batch_dict
