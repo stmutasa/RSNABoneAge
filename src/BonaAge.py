@@ -129,21 +129,14 @@ def forward_pass(images):
         fc7 = tf.nn.elu(tf.matmul(reshape, weights) + biases, name=scope.name)  # returns mat of size batch x 512
         #   _activation_summary(fc7)
 
-    # The Fc8 layer
-    with tf.variable_scope('linear2') as scope:
-        weights = _variable_with_weight_decay('weights', shape=[128, 64], wd=0.0)
-        biases = _variable_on_cpu('biases', [64], tf.constant_initializer(0.1))
-        fc8 = tf.nn.elu(tf.matmul(fc7, weights) + biases, name=scope.name)
-        #   _activation_summary(fc8)
-
     # The linear layer
-    with tf.variable_scope('softmax') as scope:
-        weights = _variable_with_weight_decay('weights', shape=[64, FLAGS.num_classes], wd=0.0)
-        biases = _variable_on_cpu('biases', [FLAGS.num_classes], tf.constant_initializer(0.0))
-        softmax = tf.add(tf.matmul(fc8, weights), biases, name=scope.name)
+    with tf.variable_scope('linear2') as scope:
+        weights = _variable_with_weight_decay('weights', shape=[128, 1], wd=0.0)
+        biases = _variable_on_cpu('biases', [1], tf.constant_initializer(0.0))
+        Logits = tf.add(tf.matmul(fc7, weights), biases, name=scope.name)
         #   _activation_summary(softmax)
 
-    return softmax  # Return whatever the name of the final logits variable is
+    return Logits  # Return whatever the name of the final logits variable is
 
 
 def total_loss(logits, labels):
@@ -152,20 +145,24 @@ def total_loss(logits, labels):
             logits: logits from the forward pass
             labels the true input labels, a 1-D tensor with 1 value for each image in the batch
         Returns:
-            Your loss value as a Tensor (float)"""
+            Your loss value as a Tensor (float)
+
     # labels = tf.cast(labels, tf.float32)  # Changes the labels input to a 64 bit integer
     # use the sparse version of cross entropy when each class true label is exclusive (1 for correct class, 0 ee)
     cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=labels, logits=logits,
                                                                    name='cross_entropy_per_example')
 
+
     # The function above returns a matrix, the one below computes the mean of the values in the returned matrix
     cross_entropy_mean = tf.reduce_mean(cross_entropy, name='cross_entropy')
-
-    # Add a comparison of the cross entropy mean to the labels here and add to collection
 
     # Adds cross entropy mean to the graph collection 'losses'. Collections are basically persistent variables you can
     # retreive later at any time
     tf.add_to_collection('losses', cross_entropy_mean)
+    """
+    # Calculate MSE loss: square root of the mean of the square of an elementwise subtraction of logits and labels
+    RMSE_loss = tf.sqrt(tf.reduce_mean(tf.square(tf.sub(labels, logits))))  #
+    tf.add_to_collection('losses', RMSE_loss)
 
     # total_loss is cross entropy loss plus L2 loss. L2 loss is added to the collection "losses"
     #  when we use the _variable_with_weight decay function and a wd (lambda) value > 0

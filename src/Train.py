@@ -40,15 +40,14 @@ def train():
         # global_step = tf.get_variable('global_step', [], initializer=tf.constant_initializer(0), trainable=False)
 
         # Get a dictionary of our images, id's, and labels here
-        images = BonaAge.inputs(1)
+        images = BonaAge.inputs(None)  # Set num epochs to none
 
         # Build a graph that computes the log odds unit prediction from the inference model (Forward pass)
         logits = BonaAge.forward_pass(images['image'])
 
         # Make our final label the average of the two labels
-        avg_label = tf.add(images['label1'], images['label2'])
-        avg_label = tf.cast(avg_label, tf.int32)  # For now define labels as integers
-        print(avg_label)
+        avg_label = tf.divide(tf.add(images['label1'], images['label2']), 2)
+        # avg_label = tf.cast(avg_label, tf.int32)  # For now define labels as integers
 
         # Calculate the total loss, adding L2 regularization and calculated cross entropy
         loss = BonaAge.total_loss(logits, avg_label)
@@ -69,13 +68,11 @@ def train():
             def before_run(self, run_context):          # Called before each call to run()
                 self._step +=1                          # Increment step
                 self._start_time = time.time()          # Start the timer for this iteration
-                print('Before Run')
                 return tf.train.SessionRunArgs(loss)    # represents arguments to be added to the session.run call
 
             def after_run(self, run_context, run_values):   #Called after each call to run()
                 duration = time.time() - self._start_time   #Calculate duration of each iteration
                 loss_value = run_values.results             #Get the current loss value To Do: Make average
-                print('After Run')
                 # Put if statements here for things you will do every x amount of steps
                 if self._step % FLAGS.print_interval == 0:  # This statement will print loss, step and other stuff
                     num_examples_per_step = FLAGS.batch_size

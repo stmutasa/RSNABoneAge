@@ -226,7 +226,7 @@ def randomize_batches(image_dict, batch_size):
         Returns:
             train: a dictionary of label: batch of data with that label """
 
-    min_dq = 1000  # Min elements to queue after a dequeue to ensure good mixing
+    min_dq = 16  # Min elements to queue after a dequeue to ensure good mixing
     capacity = min_dq + 3 * batch_size  # max number of elements in the queue
     keys, tensors = zip(*image_dict.items())  # Create zip object
 
