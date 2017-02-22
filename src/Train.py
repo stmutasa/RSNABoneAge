@@ -47,13 +47,18 @@ def train():
 
         # Make our final label the average of the two labels
         avg_label = tf.divide(tf.add(images['label1'], images['label2']), 2)
+        avg_label /= 38
         # avg_label = tf.cast(avg_label, tf.int32)  # For now define labels as integers
 
         # Calculate the total loss, adding L2 regularization and calculated cross entropy
-        loss = BonaAge.total_loss(logits, avg_label)
+        # loss = BonaAge.total_loss(logits, avg_label)
+        # To do, change this back
+        loss = tf.reduce_mean(tf.square(avg_label - logits))
+        optimizer = tf.train.AdamOptimizer(0.001)
+        train_op = optimizer.minimize(loss)
 
         # Build the backprop graph to train the model with one batch and update the parameters (Backward pass)
-        train_op = BonaAge.backward_pass(loss, global_step, True)
+        #train_op = BonaAge.backward_pass(loss, global_step, True)
 
         var_init = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
 
@@ -72,23 +77,22 @@ def train():
 
             def after_run(self, run_context, run_values):   #Called after each call to run()
                 duration = time.time() - self._start_time   #Calculate duration of each iteration
-                loss_value = run_values.results             #Get the current loss value To Do: Make average
-                if self._step <= 1: print('Loss = %.3f' % loss_value)
+                loss_value = run_values.results * 100  #Get the current loss value To Do: Make average
                 # Put if statements here for things you will do every x amount of steps
                 if self._step % FLAGS.print_interval == 0:  # This statement will print loss, step and other stuff
                     num_examples_per_step = FLAGS.batch_size
                     examples_per_sec = num_examples_per_step / duration
                     sec_per_batch = float(duration)
-                    format_str = ('%s: Step %d, Loss = %.2f (%.1f examples/sec; %.3f sec/batch)')
+                    format_str = ('%s: Step %d, Loss: = %.4f (%.1f examples/sec; %.3f sec/batch)')
                     print(format_str % (datetime.now(), self._step, loss_value, examples_per_sec, sec_per_batch))
 
         # Creates a session initializer/restorer and hooks for checkpoint summary and saving
         # (master='', is_chief=True, checkpoint_dir, scaffold=None, hooks=None, chief_only_hooks=None,
         # save_checkpoint_secs=600, save_summaries_steps=100, config=None)
         # config Proto sets options for configuring the sessin like run on GPU, allocate GPU memory etc.
-        # TO Do: Put back the stop on NAN once you fix the nana issue
         with tf.train.MonitoredTrainingSession(checkpoint_dir=FLAGS.train_dir,
                                                hooks=[tf.train.StopAtStepHook(last_step=FLAGS.max_steps),
+                                                      tf.train.NanTensorHook(loss),
                                                       _LoggerHook()], save_checkpoint_secs=FLAGS.checkpoint_steps,
                                                save_summaries_steps=FLAGS.summary_steps,
                                                config=tf.ConfigProto(

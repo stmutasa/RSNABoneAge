@@ -61,8 +61,8 @@ def forward_pass(images):
         conv = tf.nn.conv2d(images, kernel, [1, 1, 1, 1], padding='SAME')  # Create a 2D tensor with BATCH_SIZE rows
         biases = _variable_on_cpu('biases', 96, tf.constant_initializer(0.0))  # Initialize biases as 0
         pre_activation = tf.nn.bias_add(conv, biases)  # Add conv and biases into one tensor
-        conv1 = tf.nn.elu(pre_activation, name=scope.name)  # Use ELU to prevent sparsity.
-        #   _activation_summary(conv1)  # Create a histogram/scalar summary of the conv1 layer
+        conv1 = tf.nn.relu(pre_activation, name=scope.name)  # Use ELU to prevent sparsity.
+        _activation_summary(conv1)  # Create a histogram/scalar summary of the conv1 layer
 
     # Insert batch norm layer:
     norm1 = tf.nn.lrn(conv1, 4, 1.0, 0.001 / 9.0, 0.75, 'norm1')
@@ -73,8 +73,8 @@ def forward_pass(images):
         conv = tf.nn.conv2d(norm1, kernel, [1, 2, 2, 1], padding='VALID')  # Create a 2D tensor with BATCH_SIZE rows
         biases = _variable_on_cpu('biases', 256, tf.constant_initializer(0.0))  # Initialize biases as 0
         pre_activation = tf.nn.bias_add(conv, biases)  # Add conv and biases into one layer
-        conv2 = tf.nn.elu(pre_activation, name=scope.name)  # Use ELU to prevent sparsity.
-        #   _activation_summary(conv2)  # Create a histogram/scalar summary of the conv1 layer
+        conv2 = tf.nn.relu(pre_activation, name=scope.name)  # Use ELU to prevent sparsity.
+        _activation_summary(conv2)  # Create a histogram/scalar summary of the conv1 layer
 
     # Insert batch norm layer:
     norm2 = tf.nn.lrn(conv2, 4, 1.0, 0.001 / 9.0, 0.75, 'norm2')
@@ -85,8 +85,8 @@ def forward_pass(images):
         conv = tf.nn.conv2d(norm2, kernel, [1, 2, 2, 1], padding='VALID')  # Create a 2D tensor with BATCH_SIZE rows
         biases = _variable_on_cpu('biases', 128, tf.constant_initializer(0.0))  # Initialize biases as 0
         pre_activation = tf.nn.bias_add(conv, biases)  # Add conv and biases into one layer
-        conv3 = tf.nn.elu(pre_activation, name=scope.name)  # Use ELU to prevent sparsity.
-        #   _activation_summary(conv3)  # Create a histogram/scalar summary of the conv1 layer
+        conv3 = tf.nn.relu(pre_activation, name=scope.name)  # Use ELU to prevent sparsity.
+        _activation_summary(conv3)  # Create a histogram/scalar summary of the conv1 layer
 
     # Insert batch norm layer:
     norm3 = tf.nn.lrn(conv3, 4, 1.0, 0.001 / 9.0, 0.75, 'norm3')
@@ -97,8 +97,8 @@ def forward_pass(images):
         conv = tf.nn.conv2d(norm3, kernel, [1, 2, 2, 1], padding='VALID')  # Create a 2D tensor with BATCH_SIZE rows
         biases = _variable_on_cpu('biases', 128, tf.constant_initializer(0.0))  # Initialize biases as 0
         pre_activation = tf.nn.bias_add(conv, biases)  # Add conv and biases into one layer
-        conv4 = tf.nn.elu(pre_activation, name=scope.name)  # Use ELU to prevent sparsity.
-        #   _activation_summary(conv4)  # Create a histogram/scalar summary of the conv1 layer
+        conv4 = tf.nn.relu(pre_activation, name=scope.name)  # Use ELU to prevent sparsity.
+        _activation_summary(conv4)  # Create a histogram/scalar summary of the conv1 layer
 
     # Insert batch norm layer:
     norm4 = tf.nn.lrn(conv4, 4, 1.0, 0.001 / 9.0, 0.75, 'norm4')
@@ -112,8 +112,8 @@ def forward_pass(images):
         conv = tf.nn.conv2d(norm4, kernel, [1, 2, 2, 1], padding='VALID')  # Create a 2D tensor with BATCH_SIZE rows
         biases = _variable_on_cpu('biases', 128, tf.constant_initializer(0.0))  # Initialize biases as 0
         pre_activation = tf.nn.bias_add(conv, biases)  # Add conv and biases into one layer
-        conv5 = tf.nn.elu(pre_activation, name=scope.name)  # Use ELU to prevent sparsity.
-        #   _activation_summary(conv5)  # Create a histogram/scalar summary of the conv1 layer
+        conv5 = tf.nn.relu(pre_activation, name=scope.name)  # Use ELU to prevent sparsity.
+        _activation_summary(conv5)  # Create a histogram/scalar summary of the conv1 layer
 
     # The last batch norm layer:
     norm5 = tf.nn.lrn(conv5, 4, 1.0, 0.001 / 9.0, 0.75, 'norm5')
@@ -126,15 +126,15 @@ def forward_pass(images):
         dim = reshape.get_shape()[1].value  # Get columns for the matrix multiplication
         weights = _variable_with_weight_decay('weights', shape=[dim, 128], wd=0.0)
         biases = _variable_on_cpu('biases', [128], tf.constant_initializer(0.1))
-        fc7 = tf.nn.elu(tf.matmul(reshape, weights) + biases, name=scope.name)  # returns mat of size batch x 512
-        #   _activation_summary(fc7)
+        fc7 = tf.nn.relu(tf.matmul(reshape, weights) + biases, name=scope.name)  # returns mat of size batch x 512
+        _activation_summary(fc7)
 
     # The linear layer
     with tf.variable_scope('linear2') as scope:
         weights = _variable_with_weight_decay('weights', shape=[128, 1], wd=0.0)
         biases = _variable_on_cpu('biases', [1], tf.constant_initializer(0.0))
         Logits = tf.add(tf.matmul(fc7, weights), biases, name=scope.name)
-        #   _activation_summary(softmax)
+        _activation_summary(Logits)
 
     return Logits  # Return whatever the name of the final logits variable is
 
@@ -190,7 +190,7 @@ def backward_pass(total_loss, global_step1, lr_decay=False):
     # Compute the gradients. Control_dependencies waits until the operations in the parameter is executed before
     # executing the rest of the block. This makes sure we don't update gradients until we have calculated the backprop
     with tf.control_dependencies([loss_averages_op]):
-        opt = tf.train.AdamOptimizer()  # Create an AdamOptimizer graph: Can Change
+        opt = tf.train.AdamOptimizer(0.001)  # Create an AdamOptimizer graph: Can Change
 
         # Use the optimizer above to compute gradients to minimize total_loss.
         grads = opt.compute_gradients(total_loss)  # Returns a tensor with Gradients:Variable pairs
@@ -261,6 +261,7 @@ def _variable_with_weight_decay(name, shape, wd):
     dtype = tf.float16 if FLAGS.use_fp16 else tf.float32
     # Use the Xavier initializer here. Can Change
     var = _variable_on_cpu(name, shape, tf.contrib.layers.xavier_initializer(dtype=dtype))
+    # var = _variable_on_cpu(name, shape, tf.truncated_normal_initializer(stddev=5e-2, dtype=dtype))
     if wd is not None:
         weight_decay = tf.mul(tf.nn.l2_loss(var), wd, name='weight_loss')  # Uses half the L2 loss of Var*wd
         tf.add_to_collection('losses', weight_decay)  # Add the calculated weight decay to the collection of losses
@@ -304,7 +305,7 @@ def inputs(num_epochs):
 
     # First load the raw data using the handy glob library
     globs = glob.glob(FLAGS.data_dir + '*.jpg')  # Returns a list of filenames
-    print(globs)
+
     i = 0
     for file_id in globs:  # Loop through every jpeg in the data directory
         raw = Input.read_image(file_id)  # First read the image into a unit8 numpy array named raw
