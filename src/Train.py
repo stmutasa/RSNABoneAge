@@ -53,7 +53,7 @@ def train():
         loss = BonaAge.total_loss(logits, avg_label)
 
         # Build the backprop graph to train the model with one batch and update the parameters (Backward pass)
-        train_op = BonaAge.backward_pass(loss, global_step)
+        train_op = BonaAge.backward_pass(loss, global_step, True)
 
         var_init = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
 
@@ -73,6 +73,7 @@ def train():
             def after_run(self, run_context, run_values):   #Called after each call to run()
                 duration = time.time() - self._start_time   #Calculate duration of each iteration
                 loss_value = run_values.results             #Get the current loss value To Do: Make average
+                if self._step <= 1: print('Loss = %.3f' % loss_value)
                 # Put if statements here for things you will do every x amount of steps
                 if self._step % FLAGS.print_interval == 0:  # This statement will print loss, step and other stuff
                     num_examples_per_step = FLAGS.batch_size

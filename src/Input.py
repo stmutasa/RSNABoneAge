@@ -72,7 +72,7 @@ def pre_process_image(image, input_size=[512, 512], padding=[0, 0],
     # Resize the image
     resize_dims = np.array(input_size) - np.array(padding) * 2  # Different size arrays will be broadcast to the same
     pad_tuple = ((padding[0], padding[0]), (padding[1], padding[1]), (0, 0))  # set bilateral padding in X,Y and Z dims
-    resized_image = cv2.resize(image, tuple(input_size), interpolation=interpolation)  # Use openCV to resize image
+    resized_image = cv2.resize(image, tuple(resize_dims), interpolation=interpolation)  # Use openCV to resize image
     #    image = np.pad(image, pad_tuple, mode='reflect')  # pad all the dimensions with the pad-tuple OHNOES
 
     # If defined, use masking to turn 'empty space' in the image into invalid entries that won't be calculated
@@ -206,11 +206,14 @@ def load_protobuf(num_epochs, input_name, return_dict=True):
     label1 = tf.string_to_number(features['label1'], tf.float32)
     label2 = tf.string_to_number(features['label2'], tf.float32)
 
+    # Apply image pre processing here too:
+    image_float = tf.image.per_image_standardization(image=image)
+
     # Return data as a dictionary by default, otherwise return it as just the raw sets
     if not return_dict:
-        return image, label1, label2, id
+        return image_float, label1, label2, id
     else:
-        final_data = {'image': image, 'label1': label1, 'label2': label2}
+        final_data = {'image': image_float, 'label1': label1, 'label2': label2}
         returned_dict = {}
         returned_dict['id'] = id
         for key, feature in final_data.items():

@@ -161,8 +161,9 @@ def total_loss(logits, labels):
     tf.add_to_collection('losses', cross_entropy_mean)
     """
     # Calculate MSE loss: square root of the mean of the square of an elementwise subtraction of logits and labels
-    RMSE_loss = tf.sqrt(tf.reduce_mean(tf.square(tf.sub(labels, logits))))  #
-    tf.add_to_collection('losses', RMSE_loss)
+    # loss = tf.sqrt(tf.reduce_mean(tf.square(tf.sub(labels, logits))))
+    loss = tf.reduce_mean(tf.pow(tf.sub(logits, labels), 2.0))
+    tf.add_to_collection('losses', loss)
 
     # total_loss is cross entropy loss plus L2 loss. L2 loss is added to the collection "losses"
     #  when we use the _variable_with_weight decay function and a wd (lambda) value > 0
