@@ -42,23 +42,19 @@ def train():
         # Get a dictionary of our images, id's, and labels here
         images = BonaAge.inputs(None)  # Set num epochs to none
 
-        # Build a graph that computes the log odds unit prediction from the inference model (Forward pass)
+        # Build a graph that computes the prediction from the inference model (Forward pass)
         logits = BonaAge.forward_pass(images['image'])
 
         # Make our final label the average of the two labels
-        avg_label = tf.divide(tf.add(images['label1'], images['label2']), 2)
-        avg_label /= 38
-        # avg_label = tf.cast(avg_label, tf.int32)  # For now define labels as integers
+        avg_label = tf.divide(tf.add(images['label1'], images['label2']), 38)
 
-        # Calculate the total loss, adding L2 regularization and calculated cross entropy
-        # loss = BonaAge.total_loss(logits, avg_label)
-        # To do, change this back
-        loss = tf.reduce_mean(tf.square(avg_label - logits))
-        optimizer = tf.train.AdamOptimizer(0.001)
-        train_op = optimizer.minimize(loss)
+        # Calculate the total loss, adding L2 regularization
+        loss = BonaAge.total_loss(logits, avg_label)
 
         # Build the backprop graph to train the model with one batch and update the parameters (Backward pass)
-        #train_op = BonaAge.backward_pass(loss, global_step, True)
+        train_op = BonaAge.backward_pass(loss, global_step, True)
+        # optimizer = tf.train.AdamOptimizer(0.001)
+        # train_op = optimizer.minimize(loss)
 
         var_init = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
 

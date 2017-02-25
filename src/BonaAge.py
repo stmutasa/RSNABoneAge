@@ -26,7 +26,6 @@ tf.app.flags.DEFINE_integer('batch_size', 2, """Number of images to process in a
 tf.app.flags.DEFINE_string('data_dir', 'data/raw/', """Path to the data directory.""")
 tf.app.flags.DEFINE_boolean('use_fp16', False, """Train the model using fp16.""")
 tf.app.flags.DEFINE_float('keep_prob', 0.5, """probability of dropping out a neuron""")
-tf.app.flags.DEFINE_integer('num_examples', 1384, """The amount of source images""")
 tf.app.flags.DEFINE_integer('num_classes', 40, """ The number of classes """)
 
 # Maybe define lambda for the regularalization penalty in the loss function ("weight decay" in tensorflow)
@@ -146,28 +145,19 @@ def total_loss(logits, labels):
             labels the true input labels, a 1-D tensor with 1 value for each image in the batch
         Returns:
             Your loss value as a Tensor (float)
-
-    # labels = tf.cast(labels, tf.float32)  # Changes the labels input to a 64 bit integer
-    # use the sparse version of cross entropy when each class true label is exclusive (1 for correct class, 0 ee)
-    cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=labels, logits=logits,
-                                                                   name='cross_entropy_per_example')
-
-
-    # The function above returns a matrix, the one below computes the mean of the values in the returned matrix
-    cross_entropy_mean = tf.reduce_mean(cross_entropy, name='cross_entropy')
-
-    # Adds cross entropy mean to the graph collection 'losses'. Collections are basically persistent variables you can
-    # retreive later at any time
-    tf.add_to_collection('losses', cross_entropy_mean)
     """
     # Calculate MSE loss: square root of the mean of the square of an elementwise subtraction of logits and labels
-    # loss = tf.sqrt(tf.reduce_mean(tf.square(tf.sub(labels, logits))))
-    loss = tf.reduce_mean(tf.pow(tf.sub(logits, labels), 2.0))
+    loss = tf.reduce_mean(tf.square(labels - logits))
+
+    # Add these losses to the collection
     tf.add_to_collection('losses', loss)
+
+    # For now return MSE loss, add L2 regularization below later
+    return loss
 
     # total_loss is cross entropy loss plus L2 loss. L2 loss is added to the collection "losses"
     #  when we use the _variable_with_weight decay function and a wd (lambda) value > 0
-    return tf.add_n(tf.get_collection('losses'), name='total_loss')  # add_n is equal to a riemann sum operand
+    # return tf.add_n(tf.get_collection('losses'), name='total_loss')  # add_n is equal to a riemann sum operand
 
 
 def backward_pass(total_loss, global_step1, lr_decay=False):
@@ -189,11 +179,11 @@ def backward_pass(total_loss, global_step1, lr_decay=False):
 
     # Compute the gradients. Control_dependencies waits until the operations in the parameter is executed before
     # executing the rest of the block. This makes sure we don't update gradients until we have calculated the backprop
-    with tf.control_dependencies([loss_averages_op]):
-        opt = tf.train.AdamOptimizer(0.001)  # Create an AdamOptimizer graph: Can Change
+    # with tf.control_dependencies([loss_averages_op]):
+    opt = tf.train.AdamOptimizer(0.001)  # Create an AdamOptimizer graph: Can Change
 
-        # Use the optimizer above to compute gradients to minimize total_loss.
-        grads = opt.compute_gradients(total_loss)  # Returns a tensor with Gradients:Variable pairs
+    # Use the optimizer above to compute gradients to minimize total_loss.
+    grads = opt.compute_gradients(total_loss)  # Returns a tensor with Gradients:Variable pairs
 
     # Now actually apply the gradients
     apply_gradient_op = opt.apply_gradients(grads, global_step1)  # Returns an operation that applies the gradients
@@ -258,10 +248,12 @@ def _variable_with_weight_decay(name, shape, wd):
         shape, the list of ints
         stddev, the standard deviation of a truncated gussian
         wd: add L2 loss decay multiplied by this float Can Change to L1 weight decay if needed"""
-    dtype = tf.float16 if FLAGS.use_fp16 else tf.float32
-    # Use the Xavier initializer here. Can Change
+    dtype = tf.float32
+
+    # Use the Xavier initializer here. Can Change to truncated normal
     var = _variable_on_cpu(name, shape, tf.contrib.layers.xavier_initializer(dtype=dtype))
     # var = _variable_on_cpu(name, shape, tf.truncated_normal_initializer(stddev=5e-2, dtype=dtype))
+
     if wd is not None:
         weight_decay = tf.mul(tf.nn.l2_loss(var), wd, name='weight_loss')  # Uses half the L2 loss of Var*wd
         tf.add_to_collection('losses', weight_decay)  # Add the calculated weight decay to the collection of losses
@@ -277,19 +269,19 @@ def _add_loss_summaries(total_loss):
                 loss_averages_op: an op for generating the moving average of losses"""
 
     # Compute the moving average of all individual losses and the total loss
-    loss_averages = tf.train.ExponentialMovingAverage(0.9, name='avg')
+    # loss_averages = tf.train.ExponentialMovingAverage(0.9, name='avg')
     losses = tf.get_collection('losses')  # Retreive the losses variable collection
 
     # creates shadow variables and ops to maintain moving averages
-    loss_averages_op = loss_averages.apply(losses + [total_loss])
+    # loss_averages_op = loss_averages.apply(losses + [total_loss])
 
     # attach a scalar summary to all individual losses and the total loss and average losses
     for l in losses + [total_loss]:
         # Original loss is named with 'raw' for tensorboard, the moving average loss is just the name
         tf.summary.scalar(l.op.name + ' (raw)', l)
-        tf.summary.scalar(l.op.name, loss_averages.average(l))
+        # tf.summary.scalar(l.op.name, loss_averages.average(l))
 
-    return loss_averages_op
+    return losses
 
 
 def inputs(num_epochs):
@@ -297,34 +289,35 @@ def inputs(num_epochs):
         loads the protobuffer into a batch of tensors """
 
     # To Do: Skip part 1 and 2 if the protobuff already exists
-    #if not os.path.isfile('data/boneageproto.tfrecords') and not os.path.isfile('data/boneageloadict'):
+    if not os.path.isfile('data/boneageproto.tfrecords') and not os.path.isfile('data/boneageloadict'):
 
-    # Part 1: Load the raw images and labels dictionary ---------------------------
-    # print('----------------------No existing records -- Loading Raw Data...')
-    images = {}
+        # Part 1: Load the raw images and labels dictionary ---------------------------
+        print('----------------------No existing records -- Loading Raw Data...')
+        images = {}
 
-    # First load the raw data using the handy glob library
-    globs = glob.glob(FLAGS.data_dir + '*.jpg')  # Returns a list of filenames
+        # First load the raw data using the handy glob library
+        globs = glob.glob(FLAGS.data_dir + '*.jpg')  # Returns a list of filenames
 
-    i = 0
-    for file_id in globs:  # Loop through every jpeg in the data directory
-        raw = Input.read_image(file_id)  # First read the image into a unit8 numpy array named raw
-        raw = Input.pre_process_image(raw)  # Apply the pre processing of the image
+        i = 0
+        for file_id in globs:  # Loop through every jpeg in the data directory
+            raw = Input.read_image(file_id)  # First read the image into a unit8 numpy array named raw
+            raw = Input.pre_process_image(raw)  # Apply the pre processing of the image
 
-        # Append the dictionary with the key: value pair of the basename (not full globname) and processed image
-        images[os.path.splitext(os.path.basename(file_id))[0]] = raw
-        i += 1
-        if i % 100 == 0: print('     %i Images Loaded %s' % (i, raw.shape))  # Just to update us
+            # Append the dictionary with the key: value pair of the basename (not full globname) and processed image
+            images[os.path.splitext(os.path.basename(file_id))[0]] = raw
+            i += 1
+            if i % 100 == 0: print('     %i Images Loaded %s' % (i, raw.shape))  # Just to update us
 
-    label_dir = os.path.join(FLAGS.data_dir, 'handdictionary')  # The labels dict is saved under handdictionary binary
-    labels = Input.read_labels(label_dir)  # Add the dictionary of labels we have
+        label_dir = os.path.join(FLAGS.data_dir,
+                                 'handdictionary')  # The labels dict is saved under handdictionary binary
+        labels = Input.read_labels(label_dir)  # Add the dictionary of labels we have
 
-    # Part 2: Save the images and labels to protobuf -------------------------------
-    print('------------------------------------Saving images to records...')
-    Input.img_protobuf(images, labels, 'bonageproto')
+        # Part 2: Save the images and labels to protobuf -------------------------------
+        print('------------------------------------Saving images to records...')
+        Input.img_protobuf(images, labels, 'bonageproto')
 
-    # else:
-    #print('-------------------------Previously saved records found! Loading...')
+    else:
+        print('-------------------------Previously saved records found! Loading...')
 
     # Part 3: Load the protobuff  -----------------------------
     print('----------------------------------------Loading Protobuff...')
