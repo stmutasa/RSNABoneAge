@@ -20,9 +20,9 @@ tf.app.flags.DEFINE_string('train_dir', 'training', """Directory to write event 
 tf.app.flags.DEFINE_integer('max_steps', 2000, """Number of batches to run""")
 tf.app.flags.DEFINE_integer('num_epochs', 100, """How many epochs to run""")
 tf.app.flags.DEFINE_integer('test_interval', 1000, """How often to test the model during training""")
-tf.app.flags.DEFINE_integer('print_interval', 10, """How often to print a summary to console during training""")
-tf.app.flags.DEFINE_integer('checkpoint_steps', 100, """How many steps to iterate before saving a checkpoint""")
-tf.app.flags.DEFINE_integer('summary_steps', 100, """How many steps to iterate before writing a summary""")
+tf.app.flags.DEFINE_integer('print_interval', 100, """How often to print a summary to console during training""")
+tf.app.flags.DEFINE_integer('checkpoint_steps', 200, """How many steps to iterate before saving a checkpoint""")
+tf.app.flags.DEFINE_integer('summary_steps', 200, """How many steps to iterate before writing a summary""")
 tf.app.flags.DEFINE_boolean('log_device_placement', False, """Yes or no""")
 
 

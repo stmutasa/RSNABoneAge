@@ -22,7 +22,7 @@ import Input
 FLAGS = tf.app.flags.FLAGS
 
 # Define some of the immutable variables
-tf.app.flags.DEFINE_integer('batch_size', 2, """Number of images to process in a batch.""")
+tf.app.flags.DEFINE_integer('batch_size', 16, """Number of images to process in a batch.""")
 tf.app.flags.DEFINE_string('data_dir', 'data/raw/', """Path to the data directory.""")
 tf.app.flags.DEFINE_boolean('use_fp16', False, """Train the model using fp16.""")
 tf.app.flags.DEFINE_float('keep_prob', 0.5, """probability of dropping out a neuron""")
@@ -46,7 +46,7 @@ INITIAL_LEARNING_RATE = 0.01  # Initial learning rate.
 TOWER_NAME = 'tower'  # If training on multiple GPU's, prefix all op names with tower_name
 
 
-def forward_pass(images):
+def forward_pass(images, phase_train1=True):
     """ This function builds the network architecture and performs the forward pass
         Args: Images = our input dictionary
         Returns: Logits (log odds units)
@@ -54,74 +54,98 @@ def forward_pass(images):
         scope defined by the block of code under variable_scope. This allows us to reuse variables in each block"""
     # normal kernel sizes: 96, 2048, 1024, 1024, 1024, 1024, 512
 
+    # Set phase train to true if this is a training forward pass. Change the python bool to a tensorflow bool
+    phase_train = tf.Variable(phase_train1, dtype=tf.bool, trainable=False)
+
     # The first convolutional layer
     with tf.variable_scope('conv1') as scope:  # Define this variable scope as conv1
         kernel = _variable_with_weight_decay('weights', shape=[7, 7, 1, 96], wd=0.0)  # Xavier init. No WD
-        conv = tf.nn.conv2d(images, kernel, [1, 1, 1, 1], padding='SAME')  # Create a 2D tensor with BATCH_SIZE rows
-        biases = _variable_on_cpu('biases', 96, tf.constant_initializer(0.0))  # Initialize biases as 0
-        pre_activation = tf.nn.bias_add(conv, biases)  # Add conv and biases into one tensor
-        conv1 = tf.nn.relu(pre_activation, name=scope.name)  # Use ELU to prevent sparsity.
+        conv = tf.nn.conv2d(images, kernel, [1, 2, 2, 1], padding='SAME')  # Create a 2D tensor with BATCH_SIZE rows
+
+        # Insert batch norm layer:
+        # norm = batch_norm_layer(conv, 96, 'norm1', phase_train) My version
+
+        # TF Dev version
+        # norm = batch_norm(conv, decay=0.999, center=True, scale=True, updates_collections=None,
+        #                     is_training=True, reuse=None, trainable=True)
+
+        # Contrib version
+        norm = tf.cond(phase_train,
+                       lambda: tf.contrib.layers.batch_norm(conv, activation_fn=tf.nn.relu, is_training=True,
+                                                            reuse=None),
+                       lambda: tf.contrib.layers.batch_norm(conv, activation_fn=tf.nn.relu,
+                                                            is_training=False, reuse=True, scope='norm'))
+
+        conv1 = tf.nn.relu(norm, name=scope.name)  # Use ELU to prevent sparsity.
         _activation_summary(conv1)  # Create a histogram/scalar summary of the conv1 layer
 
-    # Insert batch norm layer:
-    norm1 = tf.nn.lrn(conv1, 4, 1.0, 0.001 / 9.0, 0.75, 'norm1')
 
     # The second convolutional layer
     with tf.variable_scope('conv2') as scope:  # Define this variable scope as conv1
         kernel = _variable_with_weight_decay('weights', shape=[5, 5, 96, 256], wd=0.0)  # Xavier init. No WD
-        conv = tf.nn.conv2d(norm1, kernel, [1, 2, 2, 1], padding='VALID')  # Create a 2D tensor with BATCH_SIZE rows
-        biases = _variable_on_cpu('biases', 256, tf.constant_initializer(0.0))  # Initialize biases as 0
-        pre_activation = tf.nn.bias_add(conv, biases)  # Add conv and biases into one layer
-        conv2 = tf.nn.relu(pre_activation, name=scope.name)  # Use ELU to prevent sparsity.
-        _activation_summary(conv2)  # Create a histogram/scalar summary of the conv1 layer
+        conv = tf.nn.conv2d(conv1, kernel, [1, 2, 2, 1], padding='VALID')  # Create a 2D tensor with BATCH_SIZE rows
 
-    # Insert batch norm layer:
-    norm2 = tf.nn.lrn(conv2, 4, 1.0, 0.001 / 9.0, 0.75, 'norm2')
+        norm = tf.cond(phase_train,
+                       lambda: tf.contrib.layers.batch_norm(conv, activation_fn=tf.nn.relu, is_training=True,
+                                                            reuse=None),
+                       lambda: tf.contrib.layers.batch_norm(conv, activation_fn=tf.nn.relu,
+                                                            is_training=False, reuse=True, scope='norm'))
+
+        conv2 = tf.nn.relu(norm, name=scope.name)  # Use ELU to prevent sparsity.
+        _activation_summary(conv2)  # Create a histogram/scalar summary of the conv1 layer
 
     # The third convolutional layer
     with tf.variable_scope('conv3') as scope:  # Define this variable scope as conv1
         kernel = _variable_with_weight_decay('weights', shape=[3, 3, 256, 128], wd=0.0)  # Xavier init. No WD
-        conv = tf.nn.conv2d(norm2, kernel, [1, 2, 2, 1], padding='VALID')  # Create a 2D tensor with BATCH_SIZE rows
-        biases = _variable_on_cpu('biases', 128, tf.constant_initializer(0.0))  # Initialize biases as 0
-        pre_activation = tf.nn.bias_add(conv, biases)  # Add conv and biases into one layer
-        conv3 = tf.nn.relu(pre_activation, name=scope.name)  # Use ELU to prevent sparsity.
+        conv = tf.nn.conv2d(conv2, kernel, [1, 2, 2, 1], padding='VALID')  # Create a 2D tensor with BATCH_SIZE rows
+
+        norm = tf.cond(phase_train,
+                       lambda: tf.contrib.layers.batch_norm(conv, activation_fn=tf.nn.relu, is_training=True,
+                                                            reuse=None),
+                       lambda: tf.contrib.layers.batch_norm(conv, activation_fn=tf.nn.relu,
+                                                            is_training=False, reuse=True, scope='norm'))
+
+        conv3 = tf.nn.relu(norm, name=scope.name)  # Use ELU to prevent sparsity.
         _activation_summary(conv3)  # Create a histogram/scalar summary of the conv1 layer
 
-    # Insert batch norm layer:
-    norm3 = tf.nn.lrn(conv3, 4, 1.0, 0.001 / 9.0, 0.75, 'norm3')
 
     # The 4th convolutional layer
     with tf.variable_scope('conv4') as scope:  # Define this variable scope as conv1
         kernel = _variable_with_weight_decay('weights', shape=[3, 3, 128, 128], wd=0.0)  # Xavier init. No WD
-        conv = tf.nn.conv2d(norm3, kernel, [1, 2, 2, 1], padding='VALID')  # Create a 2D tensor with BATCH_SIZE rows
-        biases = _variable_on_cpu('biases', 128, tf.constant_initializer(0.0))  # Initialize biases as 0
-        pre_activation = tf.nn.bias_add(conv, biases)  # Add conv and biases into one layer
-        conv4 = tf.nn.relu(pre_activation, name=scope.name)  # Use ELU to prevent sparsity.
+        conv = tf.nn.conv2d(conv3, kernel, [1, 2, 2, 1], padding='VALID')  # Create a 2D tensor with BATCH_SIZE rows
+
+        norm = tf.cond(phase_train,
+                       lambda: tf.contrib.layers.batch_norm(conv, activation_fn=tf.nn.relu, is_training=True,
+                                                            reuse=None),
+                       lambda: tf.contrib.layers.batch_norm(conv, activation_fn=tf.nn.relu,
+                                                            is_training=False, reuse=True, scope='norm'))
+
+        conv4 = tf.nn.relu(norm, name=scope.name)  # Use ELU to prevent sparsity.
         _activation_summary(conv4)  # Create a histogram/scalar summary of the conv1 layer
 
-    # Insert batch norm layer:
-    norm4 = tf.nn.lrn(conv4, 4, 1.0, 0.001 / 9.0, 0.75, 'norm4')
 
     # To Do: Insert the affine transform layer here
-    affine1 = 0
+    # affine1 = 0
 
     # The 5th convolutional layer
     with tf.variable_scope('conv5') as scope:  # Define this variable scope as conv1
         kernel = _variable_with_weight_decay('weights', shape=[3, 3, 128, 128], wd=0.0)  # Xavier init. No WD
-        conv = tf.nn.conv2d(norm4, kernel, [1, 2, 2, 1], padding='VALID')  # Create a 2D tensor with BATCH_SIZE rows
-        biases = _variable_on_cpu('biases', 128, tf.constant_initializer(0.0))  # Initialize biases as 0
-        pre_activation = tf.nn.bias_add(conv, biases)  # Add conv and biases into one layer
-        conv5 = tf.nn.relu(pre_activation, name=scope.name)  # Use ELU to prevent sparsity.
-        _activation_summary(conv5)  # Create a histogram/scalar summary of the conv1 layer
+        conv = tf.nn.conv2d(conv4, kernel, [1, 2, 2, 1], padding='VALID')  # Create a 2D tensor with BATCH_SIZE rows
 
-    # The last batch norm layer:
-    norm5 = tf.nn.lrn(conv5, 4, 1.0, 0.001 / 9.0, 0.75, 'norm5')
+        norm = tf.cond(phase_train,
+                       lambda: tf.contrib.layers.batch_norm(conv, activation_fn=tf.nn.relu, is_training=True,
+                                                            reuse=None),
+                       lambda: tf.contrib.layers.batch_norm(conv, activation_fn=tf.nn.relu,
+                                                            is_training=False, reuse=True, scope='norm'))
+
+        conv5 = tf.nn.relu(norm, name=scope.name)  # Use ELU to prevent sparsity.
+        _activation_summary(conv5)  # Create a histogram/scalar summary of the conv1 layer
 
     # To Do: Maybe apply dropout here
 
     # The Fc7 layer
     with tf.variable_scope('linear1') as scope:
-        reshape = tf.reshape(norm5, [FLAGS.batch_size, -1])  # Move everything to n by b matrix for a single matmul
+        reshape = tf.reshape(conv5, [FLAGS.batch_size, -1])  # Move everything to n by b matrix for a single matmul
         dim = reshape.get_shape()[1].value  # Get columns for the matrix multiplication
         weights = _variable_with_weight_decay('weights', shape=[dim, 128], wd=0.0)
         biases = _variable_on_cpu('biases', [128], tf.constant_initializer(0.1))
@@ -136,6 +160,24 @@ def forward_pass(images):
         _activation_summary(Logits)
 
     return Logits  # Return whatever the name of the final logits variable is
+
+
+def batch_norm_layer(input_layer, kernels, scope, phase_train):
+    with tf.variable_scope(scope):
+        beta = tf.Variable(tf.constant(0.0, shape=[kernels]), name='beta', trainable=True)
+        gamma = tf.Variable(tf.constant(1.0, shape=[kernels]), name='gamma', trainable=True)
+        mean, variance = tf.nn.moments(input_layer, [0, 1, 2], name='moments')
+        ema = tf.train.ExponentialMovingAverage(decay=0.5)
+
+        def mean_var_with_update():
+            ema_apply_op = ema.apply([mean, variance])
+            with tf.control_dependencies([ema_apply_op]):
+                return tf.identity(mean), tf.identity(variance)
+
+        mean, var = tf.cond(phase_train, mean_var_with_update, lambda: (ema.average(mean), ema.average(variance)))
+        normed = tf.nn.batch_normalization(input_layer, mean, var, beta, gamma, 1e-3)
+
+        return normed
 
 
 def total_loss(logits, labels):
@@ -180,7 +222,7 @@ def backward_pass(total_loss, global_step1, lr_decay=False):
     # Compute the gradients. Control_dependencies waits until the operations in the parameter is executed before
     # executing the rest of the block. This makes sure we don't update gradients until we have calculated the backprop
     # with tf.control_dependencies([loss_averages_op]):
-    opt = tf.train.AdamOptimizer(0.001)  # Create an AdamOptimizer graph: Can Change
+    opt = tf.train.AdamOptimizer(0.0001)  # Create an AdamOptimizer graph: Can Change
 
     # Use the optimizer above to compute gradients to minimize total_loss.
     grads = opt.compute_gradients(total_loss)  # Returns a tensor with Gradients:Variable pairs
@@ -190,8 +232,8 @@ def backward_pass(total_loss, global_step1, lr_decay=False):
 
     # Add histograms for the trainable variables. i.e. the collection of variables created with Trainable=True
     # These include the biases, the activation layers (nonlinearities) and weights
-    for var in tf.trainable_variables():
-        tf.summary.histogram(var.op.name, var)
+    # for var in tf.trainable_variables():
+    #     tf.summary.histogram(var.op.name, var)
 
     # Add histograms for the gradients we calculated above
     # for grad, var in grads:
@@ -224,7 +266,7 @@ def _activation_summary(x):
     return
 
 
-def _variable_on_cpu(name: object, shape: object, initializer: object) -> object:
+def _variable_on_cpu(name: object, shape: object, initializer: object):
     """ Helper to create a variable stored on CPU memory.
         Why do this? Well if you are using multiple GPU's it might be faster to store some things on the CPU since
         copying from CPU to GPU is faster than GPU to GPU. Can change to let TF decide by deleting the cpu context code
@@ -234,9 +276,8 @@ def _variable_on_cpu(name: object, shape: object, initializer: object) -> object
             initializer: the initializer for the vriable
         Returns:
             Variable tensor"""
-    with tf.device('/cpu:0'):
-        dtype = tf.float16 if FLAGS.use_fp16 else tf.float32
-        var = tf.get_variable(name, shape, initializer=initializer, dtype=dtype)
+    dtype = tf.float16 if FLAGS.use_fp16 else tf.float32
+    var = tf.get_variable(name, shape, initializer=initializer, dtype=dtype)
 
     return var
 
@@ -255,7 +296,7 @@ def _variable_with_weight_decay(name, shape, wd):
     # var = _variable_on_cpu(name, shape, tf.truncated_normal_initializer(stddev=5e-2, dtype=dtype))
 
     if wd is not None:
-        weight_decay = tf.mul(tf.nn.l2_loss(var), wd, name='weight_loss')  # Uses half the L2 loss of Var*wd
+        weight_decay = tf.multiply(tf.nn.l2_loss(var), wd, name='weight_loss')  # Uses half the L2 loss of Var*wd
         tf.add_to_collection('losses', weight_decay)  # Add the calculated weight decay to the collection of losses
 
     return var
@@ -301,7 +342,7 @@ def inputs(num_epochs):
         i = 0
         for file_id in globs:  # Loop through every jpeg in the data directory
             raw = Input.read_image(file_id)  # First read the image into a unit8 numpy array named raw
-            raw = Input.pre_process_image(raw)  # Apply the pre processing of the image
+            #raw = Input.pre_process_image(raw)  # Apply the pre processing of the image
 
             # Append the dictionary with the key: value pair of the basename (not full globname) and processed image
             images[os.path.splitext(os.path.basename(file_id))[0]] = raw

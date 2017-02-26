@@ -10,8 +10,9 @@ _author_ = 'Simi'
 # Libraries we will use in input.py
 import os
 import tensorflow as tf
-import cv2  # Open CV for image manipulation and importing
-import numpy as np
+# import cv2  # Open CV for image manipulation and importing
+import matplotlib.image as mpimg
+# from scipy import misc
 import pickle  # Module for serializing data and saving it to disk for use in another script
 import glob
 
@@ -47,9 +48,9 @@ def read_image(filename, grayscale=True):
         Automatically converts to greyscale unless specified """
 
     if grayscale:  # Make the image into a greyscale by default
-        image = cv2.imread(filename, 0)
+        image = mpimg.imread(filename)
     else:  # Else keep all the color channels
-        image = cv2.imread(filename)
+        image = mpimg.imread(filename)
 
     return image
 
@@ -62,28 +63,30 @@ def read_labels(filename):
     return labels
 
 
-def pre_process_image(image, input_size=[512, 512], padding=[0, 0],
-                      interpolation=cv2.INTER_LINEAR, masking=False):
-    """ Pre processes the image: Resizes based on the specified input size, padding, and interpolation method """
+# Not doing this before loading anymore
 
-    # Center the data and divide by the standard deviation
-    # image = (image - np.mean(image)) / np.std(image) removed, will have to do later to store smaller protobuf
-
-    # Resize the image
-    resize_dims = np.array(input_size) - np.array(padding) * 2  # Different size arrays will be broadcast to the same
-    pad_tuple = ((padding[0], padding[0]), (padding[1], padding[1]), (0, 0))  # set bilateral padding in X,Y and Z dims
-    resized_image = cv2.resize(image, tuple(resize_dims), interpolation=interpolation)  # Use openCV to resize image
-    #    image = np.pad(image, pad_tuple, mode='reflect')  # pad all the dimensions with the pad-tuple OHNOES
-
-    # If defined, use masking to turn 'empty space' in the image into invalid entries that won't be calculated
-    if masking == True:
-        mask = np.zeros(image.shape, 'bool')  # if masking, create an array with all values set to false
-        mask = np.pad(mask, pad_tuple, mode='constant', constant_values=(True))  # pad the mask too
-        if interpolation == cv2.INTER_NEAREST:
-            image[mask] = 0
-        return image, mask
-
-    return resized_image
+# def pre_process_image(image, input_size=[512, 512], padding=[0, 0],
+#                       interpolation=cv2.INTER_LINEAR, masking=False):
+#     """ Pre processes the image: Resizes based on the specified input size, padding, and interpolation method """
+#
+#     # Center the data and divide by the standard deviation
+#     # image = (image - np.mean(image)) / np.std(image) removed, will have to do later to store smaller protobuf
+#
+#     # Resize the image
+#     resize_dims = np.array(input_size) - np.array(padding) * 2  # Different size arrays will be broadcast to the same
+#     pad_tuple = ((padding[0], padding[0]), (padding[1], padding[1]), (0, 0))  # set bilateral padding in X,Y and Z dims
+#     resized_image = cv2.resize(image, tuple(resize_dims), interpolation=interpolation)  # Use openCV to resize image
+#     #    image = np.pad(image, pad_tuple, mode='reflect')  # pad all the dimensions with the pad-tuple OHNOES
+#
+#     # If defined, use masking to turn 'empty space' in the image into invalid entries that won't be calculated
+#     if masking == True:
+#         mask = np.zeros(image.shape, 'bool')  # if masking, create an array with all values set to false
+#         mask = np.pad(mask, pad_tuple, mode='constant', constant_values=(True))  # pad the mask too
+#         if interpolation == cv2.INTER_NEAREST:
+#             image[mask] = 0
+#         return image, mask
+#
+#     return resized_image
 
 
 def img_protobuf(images, labels, name):
@@ -126,9 +129,9 @@ def img_protobuf(images, labels, name):
     feature_data_pre = {'data': None, 'label1': None, 'label2': None, 'height': None, 'width': None, 'examples': None}
     feature_data = create_feature_dict(feature_data_pre, index, True)
     # Save the feature data dictionary using pickle
-    savename = os.path.join(records_file, 'boneageloadict')
-    with open(savename, 'r+b') as file_handle:
-        pickle._dump(feature_data, file_handle)
+    # savename = os.path.join(records_file, 'boneageloadict')
+    # with open(savename, 'r+b') as file_handle:
+    #     pickle._dump(feature_data, file_handle)
 
     return
 
