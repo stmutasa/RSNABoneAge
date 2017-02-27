@@ -148,8 +148,14 @@ def forward_pass(images, phase_train1=True):
         reshape = tf.reshape(conv5, [FLAGS.batch_size, -1])  # Move everything to n by b matrix for a single matmul
         dim = reshape.get_shape()[1].value  # Get columns for the matrix multiplication
         weights = _variable_with_weight_decay('weights', shape=[dim, 128], wd=0.0)
-        biases = _variable_on_cpu('biases', [128], tf.constant_initializer(0.1))
-        fc7 = tf.nn.relu(tf.matmul(reshape, weights) + biases, name=scope.name)  # returns mat of size batch x 512
+
+        norm = tf.cond(phase_train,
+                       lambda: tf.contrib.layers.batch_norm(weights, activation_fn=tf.nn.relu, is_training=True,
+                                                            reuse=None),
+                       lambda: tf.contrib.layers.batch_norm(weights, activation_fn=tf.nn.relu,
+                                                            is_training=False, reuse=True, scope='norm'))
+
+        fc7 = tf.nn.relu(tf.matmul(reshape, norm), name=scope.name)  # returns mat of size batch x 512
         _activation_summary(fc7)
 
     # The linear layer
