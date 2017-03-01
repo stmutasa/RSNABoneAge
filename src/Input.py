@@ -10,7 +10,6 @@ _author_ = 'Simi'
 # Libraries we will use in input.py
 import os
 import tensorflow as tf
-# import cv2  # Open CV for image manipulation and importing
 import matplotlib.image as mpimg
 # from scipy import misc
 import pickle  # Module for serializing data and saving it to disk for use in another script
@@ -200,17 +199,21 @@ def load_protobuf(num_epochs, input_name, return_dict=True):
     # img_shape = [256 * 256]
     # image.set_shape(img_shape)
     image = tf.reshape(image, shape=[256, 256, 1])
+    tf.summary.image('pre float img', tf.reshape(image, shape=[1, 256, 256, 1]), max_outputs=1)
 
     # Image is now a handle to : "("DecodeRaw:0", shape=(65536,), dtype=float32)"
 
     # Cast all our data to 32 bit floating point units. Cannot convert string to number unless you use that function
-    image = tf.cast(image, tf.float32)
+    image_float = tf.cast(image, tf.float32)
     id = tf.cast(features['id'], tf.float32)
     label1 = tf.string_to_number(features['label1'], tf.float32)
     label2 = tf.string_to_number(features['label2'], tf.float32)
 
+    # create float summary image
+    tf.summary.image('post float img', tf.reshape(image_float, shape=[1, 256, 256, 1]), max_outputs=1)
+
     # Apply image pre processing here too:
-    image_float = tf.image.per_image_standardization(image=image)
+    # image_float = tf.image.per_image_standardization(image=image)
 
     # Return data as a dictionary by default, otherwise return it as just the raw sets
     if not return_dict:
@@ -245,7 +248,5 @@ def randomize_batches(image_dict, batch_size):
     # Recreate the batched data as a dictionary with the new batch size
     for key, shuffle in zip(keys, shuffled): batch_dict[key] = shuffle
 
-    # Display the training images in the visualizer:
-    tf.summary.image('image', batch_dict['image'])
 
     return batch_dict

@@ -8,6 +8,8 @@ import time                                 # to retreive current time
 from datetime import datetime  # Classes for manipulating the date and time displaying
 
 import BonaAge
+import matplotlib.pyplot as plt
+import numpy as np
 import tensorflow as tf
 
 _author_ = 'Simi'
@@ -19,7 +21,7 @@ FLAGS = tf.app.flags.FLAGS
 tf.app.flags.DEFINE_string('train_dir', 'training', """Directory to write event logs and save checkpoint files""")
 tf.app.flags.DEFINE_integer('max_steps', 50000, """Number of batches to run""")
 tf.app.flags.DEFINE_integer('num_epochs', 1000, """How many epochs to run""")
-tf.app.flags.DEFINE_integer('test_interval', 1000, """How often to test the model during training""")
+tf.app.flags.DEFINE_integer('test_interval', 200, """How often to test the model during training""")
 tf.app.flags.DEFINE_integer('print_interval', 100, """How often to print a summary to console during training""")
 tf.app.flags.DEFINE_integer('checkpoint_steps', 500, """How many steps to iterate before saving a checkpoint""")
 tf.app.flags.DEFINE_integer('summary_steps', 500, """How many steps to iterate before writing a summary""")
@@ -41,7 +43,7 @@ def train():
 
     # Get a dictionary of our images, id's, and labels here
     images = BonaAge.inputs(None)  # Set num epochs to none
-
+    tf.summary.image('pre logits img', images['image'], max_outputs=1)
     # Build a graph that computes the prediction from the inference model (Forward pass)
     logits = BonaAge.forward_pass(images['image'])
 
@@ -53,13 +55,16 @@ def train():
 
     # Build the backprop graph to train the model with one batch and update the parameters (Backward pass)
     train_op = BonaAge.backward_pass(loss, global_step, True)
-    # optimizer = tf.train.AdamOptimizer(0.001)
-    # train_op = optimizer.minimize(loss)
+
+    # Merge the summaries
+    all_summaries = tf.summary.merge_all()
+
+    # Initialize the handle to the summary writer in our training directory
+    summary_writer = tf.summary.FileWriter(FLAGS.train_dir)
 
     var_init = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
 
     # SessionRunHook is called when you use a monitored session's run function after each run
-    # To do: Define run_values and run_context
     class _LoggerHook(tf.train.SessionRunHook):
 
         def begin(self):
@@ -81,6 +86,31 @@ def train():
                 sec_per_batch = float(duration)
                 format_str = ('%s: Step %d, Loss: = %.4f (%.1f examples/sec; %.3f sec/batch)')
                 print(format_str % (datetime.now(), self._step, loss_value, examples_per_sec, sec_per_batch))
+
+                # Test the data
+                predictions1, label1, image1 = mon_sess.run([logits, avg_label, images])
+                predictions = predictions1.astype(np.float)
+                label = label1.astype(np.float)
+                image2 = image1['image'].astype(np.float)
+                image = np.reshape(image2, [256, 256])
+                label *= 19
+                predictions *= 19
+                np.set_printoptions(precision=1)  # use numpy to print only the first sig fig
+                print('Predictions: %s, Label: %s, image shape: %s' % (predictions.transpose(), label, image.shape))
+                plt.imshow(image, cmap=plt.cm.gray)
+                plt.show()
+
+                # Run a session to retrieve our summaries
+                summary = mon_sess.run(all_summaries)
+
+                # Add the summaries to the protobuf for Tensorboard
+                summary_writer.add_summary(summary, self._step)
+
+                # if self._step % FLAGS.test_interval == 0:  # This statement will print loss, step and other stuff
+                #     predictions, label = mon_sess.run([logits, avg_label])
+                #     label *= 78
+                #     predictions *= 78
+                #     print ('Predictions: %s, Label: %s' %(predictions, label))
 
     # Creates a session initializer/restorer and hooks for checkpoint summary and saving
     # (master='', is_chief=True, checkpoint_dir, scaffold=None, hooks=None, chief_only_hooks=None,

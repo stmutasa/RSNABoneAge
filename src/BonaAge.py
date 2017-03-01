@@ -12,8 +12,10 @@ _author_ = 'simi'
 
 import os  # for the os type functionality, read write files and manipulate paths
 import re  # regular expression operations for the print statements
-# import sys  # access to variables used by the interpreter (which reads and executes python code
 import glob  # Simple but killer file reading module
+
+import numpy as np
+import matplotlib.pyplot as plt
 
 import tensorflow as tf
 import Input
@@ -22,11 +24,8 @@ import Input
 FLAGS = tf.app.flags.FLAGS
 
 # Define some of the immutable variables
-tf.app.flags.DEFINE_integer('batch_size', 16, """Number of images to process in a batch.""")
+tf.app.flags.DEFINE_integer('batch_size', 1, """Number of images to process in a batch.""")
 tf.app.flags.DEFINE_string('data_dir', 'data/raw/', """Path to the data directory.""")
-tf.app.flags.DEFINE_boolean('use_fp16', False, """Train the model using fp16.""")
-tf.app.flags.DEFINE_float('keep_prob', 0.5, """probability of dropping out a neuron""")
-tf.app.flags.DEFINE_integer('num_classes', 40, """ The number of classes """)
 
 # Maybe define lambda for the regularalization penalty in the loss function ("weight decay" in tensorflow)
 # Maybe define whether to use L1 or L2 regularization
@@ -76,7 +75,7 @@ def forward_pass(images, phase_train1=True):
                        lambda: tf.contrib.layers.batch_norm(conv, activation_fn=tf.nn.relu,
                                                             is_training=False, reuse=True, scope='norm'))
 
-        conv1 = tf.nn.relu(norm, name=scope.name)  # Use ELU to prevent sparsity.
+        conv1 = tf.nn.elu(norm, name=scope.name)  # Use ELU to prevent sparsity.
         _activation_summary(conv1)  # Create a histogram/scalar summary of the conv1 layer
 
 
@@ -91,7 +90,7 @@ def forward_pass(images, phase_train1=True):
                        lambda: tf.contrib.layers.batch_norm(conv, activation_fn=tf.nn.relu,
                                                             is_training=False, reuse=True, scope='norm'))
 
-        conv2 = tf.nn.relu(norm, name=scope.name)  # Use ELU to prevent sparsity.
+        conv2 = tf.nn.elu(norm, name=scope.name)  # Use ELU to prevent sparsity.
         _activation_summary(conv2)  # Create a histogram/scalar summary of the conv1 layer
 
     # The third convolutional layer
@@ -105,7 +104,7 @@ def forward_pass(images, phase_train1=True):
                        lambda: tf.contrib.layers.batch_norm(conv, activation_fn=tf.nn.relu,
                                                             is_training=False, reuse=True, scope='norm'))
 
-        conv3 = tf.nn.relu(norm, name=scope.name)  # Use ELU to prevent sparsity.
+        conv3 = tf.nn.elu(norm, name=scope.name)  # Use ELU to prevent sparsity.
         _activation_summary(conv3)  # Create a histogram/scalar summary of the conv1 layer
 
 
@@ -120,7 +119,7 @@ def forward_pass(images, phase_train1=True):
                        lambda: tf.contrib.layers.batch_norm(conv, activation_fn=tf.nn.relu,
                                                             is_training=False, reuse=True, scope='norm'))
 
-        conv4 = tf.nn.relu(norm, name=scope.name)  # Use ELU to prevent sparsity.
+        conv4 = tf.nn.elu(norm, name=scope.name)  # Use ELU to prevent sparsity.
         _activation_summary(conv4)  # Create a histogram/scalar summary of the conv1 layer
 
 
@@ -138,7 +137,7 @@ def forward_pass(images, phase_train1=True):
                        lambda: tf.contrib.layers.batch_norm(conv, activation_fn=tf.nn.relu,
                                                             is_training=False, reuse=True, scope='norm'))
 
-        conv5 = tf.nn.relu(norm, name=scope.name)  # Use ELU to prevent sparsity.
+        conv5 = tf.nn.elu(norm, name=scope.name)  # Use ELU to prevent sparsity.
         _activation_summary(conv5)  # Create a histogram/scalar summary of the conv1 layer
 
     # To Do: Maybe apply dropout here
@@ -155,13 +154,13 @@ def forward_pass(images, phase_train1=True):
                        lambda: tf.contrib.layers.batch_norm(weights, activation_fn=tf.nn.relu,
                                                             is_training=False, reuse=True, scope='norm'))
 
-        fc7 = tf.nn.relu(tf.matmul(reshape, norm), name=scope.name)  # returns mat of size batch x 512
+        fc7 = tf.nn.elu(tf.matmul(reshape, norm), name=scope.name)  # returns mat of size batch x 512
         _activation_summary(fc7)
 
     # The linear layer
     with tf.variable_scope('linear2') as scope:
-        weights = _variable_with_weight_decay('weights', shape=[128, 1], wd=0.0)
-        biases = _variable_on_cpu('biases', [1], tf.constant_initializer(0.0))
+        weights = _variable_with_weight_decay('weights', shape=[128, FLAGS.batch_size], wd=0.0)
+        biases = _variable_on_cpu('biases', [FLAGS.batch_size], tf.constant_initializer(0.0))
         Logits = tf.add(tf.matmul(fc7, weights), biases, name=scope.name)
         _activation_summary(Logits)
 
@@ -197,6 +196,9 @@ def total_loss(logits, labels):
     # Calculate MSE loss: square root of the mean of the square of an elementwise subtraction of logits and labels
     loss = tf.reduce_mean(tf.square(labels - logits))
 
+    # Output the summary of the MSE
+    tf.summary.scalar('Mean Square Error', loss)
+
     # Add these losses to the collection
     tf.add_to_collection('losses', loss)
 
@@ -221,9 +223,6 @@ def backward_pass(total_loss, global_step1, lr_decay=False):
         lr = tf.train.exponential_decay(INITIAL_LEARNING_RATE, global_step1, decay_steps,
                                         LEARNING_RATE_DECAY_FACTOR, staircase=True)  # Can Change to another type
         tf.summary.scalar('learning_rate', lr)  # Output a scalar sumamry to TensorBoard
-
-    # Generate moving averages of all losses and associated summaries
-    loss_averages_op = _add_loss_summaries(total_loss)  # To do
 
     # Compute the gradients. Control_dependencies waits until the operations in the parameter is executed before
     # executing the rest of the block. This makes sure we don't update gradients until we have calculated the backprop
@@ -282,7 +281,7 @@ def _variable_on_cpu(name: object, shape: object, initializer: object):
             initializer: the initializer for the vriable
         Returns:
             Variable tensor"""
-    dtype = tf.float16 if FLAGS.use_fp16 else tf.float32
+    dtype = tf.float32
     var = tf.get_variable(name, shape, initializer=initializer, dtype=dtype)
 
     return var
@@ -308,29 +307,6 @@ def _variable_with_weight_decay(name, shape, wd):
     return var
 
 
-def _add_loss_summaries(total_loss):
-    """ Generates the moving average for all losses and associated scalar summaries
-            Args:
-                Total loss: the loss calculated in the total_loss function
-            Returns:
-                loss_averages_op: an op for generating the moving average of losses"""
-
-    # Compute the moving average of all individual losses and the total loss
-    # loss_averages = tf.train.ExponentialMovingAverage(0.9, name='avg')
-    losses = tf.get_collection('losses')  # Retreive the losses variable collection
-
-    # creates shadow variables and ops to maintain moving averages
-    # loss_averages_op = loss_averages.apply(losses + [total_loss])
-
-    # attach a scalar summary to all individual losses and the total loss and average losses
-    for l in losses + [total_loss]:
-        # Original loss is named with 'raw' for tensorboard, the moving average loss is just the name
-        tf.summary.scalar(l.op.name + ' (raw)', l)
-        # tf.summary.scalar(l.op.name, loss_averages.average(l))
-
-    return losses
-
-
 def inputs(num_epochs):
     """ This function loads our raw inputs, processes them to a protobuffer that is then saved and
         loads the protobuffer into a batch of tensors """
@@ -353,7 +329,12 @@ def inputs(num_epochs):
             # Append the dictionary with the key: value pair of the basename (not full globname) and processed image
             images[os.path.splitext(os.path.basename(file_id))[0]] = raw
             i += 1
-            if i % 100 == 0: print('     %i Images Loaded %s' % (i, raw.shape))  # Just to update us
+            if i % 300 == 0:
+                print('     %i Images Loaded at %s, generating sample...' % (i, raw.shape))  # Just to update us
+                raw2 = (raw - np.mean(raw)) / np.std(raw)
+                plt.title(file_id)
+                plt.imshow(raw2, cmap=plt.cm.gray)
+                plt.show()
 
         label_dir = os.path.join(FLAGS.data_dir,
                                  'handdictionary')  # The labels dict is saved under handdictionary binary
@@ -373,5 +354,7 @@ def inputs(num_epochs):
     # Part 4: Create randomized batches
     print('----------------------------------Creating and randomizing batches...')
     data = Input.randomize_batches(data, FLAGS.batch_size)
+
+    tf.summary.image('post randomize batches img', data['image'], max_outputs=1)
 
     return data
