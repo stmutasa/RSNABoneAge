@@ -8,7 +8,6 @@ import time                                 # to retreive current time
 from datetime import datetime  # Classes for manipulating the date and time displaying
 
 import BonaAge
-import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
 
@@ -48,7 +47,7 @@ def train():
     logits = BonaAge.forward_pass(images['image'])
 
     # Make our final label the average of the two labels
-    avg_label = tf.divide(tf.add(images['label1'], images['label2']), 38)
+    avg_label = tf.transpose(tf.divide(tf.add(images['label1'], images['label2']), 38))
 
     # Calculate the total loss, adding L2 regularization
     loss = BonaAge.total_loss(logits, avg_label)
@@ -88,17 +87,17 @@ def train():
                 print(format_str % (datetime.now(), self._step, loss_value, examples_per_sec, sec_per_batch))
 
                 # Test the data
-                predictions1, label1, image1 = mon_sess.run([logits, avg_label, images])
+                predictions1, label1, loss1 = mon_sess.run([logits, avg_label, loss])
                 predictions = predictions1.astype(np.float)
                 label = label1.astype(np.float)
-                image2 = image1['image'].astype(np.float)
-                image = np.reshape(image2, [256, 256])
+                # image2 = image1['image'].astype(np.float)
+                # image = np.reshape(image2, [256, 256])
                 label *= 19
                 predictions *= 19
                 np.set_printoptions(precision=1)  # use numpy to print only the first sig fig
-                print('Predictions: %s, Label: %s, image shape: %s' % (predictions.transpose(), label, image.shape))
-                plt.imshow(image, cmap=plt.cm.gray)
-                plt.show()
+                print('Predictions: %s, Label: %s, Loss: %s' % (predictions, label, loss1))
+                # plt.imshow(image, cmap=plt.cm.gray)
+                # plt.show()
 
                 # Run a session to retrieve our summaries
                 summary = mon_sess.run(all_summaries)

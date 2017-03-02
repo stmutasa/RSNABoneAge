@@ -24,7 +24,7 @@ import Input
 FLAGS = tf.app.flags.FLAGS
 
 # Define some of the immutable variables
-tf.app.flags.DEFINE_integer('batch_size', 1, """Number of images to process in a batch.""")
+tf.app.flags.DEFINE_integer('batch_size', 4, """Number of images to process in a batch.""")
 tf.app.flags.DEFINE_string('data_dir', 'data/raw/', """Path to the data directory.""")
 
 # Maybe define lambda for the regularalization penalty in the loss function ("weight decay" in tensorflow)
@@ -159,9 +159,10 @@ def forward_pass(images, phase_train1=True):
 
     # The linear layer
     with tf.variable_scope('linear2') as scope:
-        weights = _variable_with_weight_decay('weights', shape=[128, FLAGS.batch_size], wd=0.0)
-        biases = _variable_on_cpu('biases', [FLAGS.batch_size], tf.constant_initializer(0.0))
-        Logits = tf.add(tf.matmul(fc7, weights), biases, name=scope.name)
+        W = tf.Variable(np.random.randn(128, 1), name='Weights', dtype=tf.float32)
+        b = tf.Variable(np.ones(FLAGS.batch_size), name='Bias', dtype=tf.float32)
+        Logits1 = tf.add(tf.matmul(fc7, W), b, name=scope.name)
+        Logits = tf.slice(Logits1, [0, 0], [1, 4])
         _activation_summary(Logits)
 
     return Logits  # Return whatever the name of the final logits variable is
@@ -227,7 +228,7 @@ def backward_pass(total_loss, global_step1, lr_decay=False):
     # Compute the gradients. Control_dependencies waits until the operations in the parameter is executed before
     # executing the rest of the block. This makes sure we don't update gradients until we have calculated the backprop
     # with tf.control_dependencies([loss_averages_op]):
-    opt = tf.train.AdamOptimizer(0.0001)  # Create an AdamOptimizer graph: Can Change
+    opt = tf.train.AdamOptimizer(0.001)  # Create an AdamOptimizer graph: Can Change
 
     # Use the optimizer above to compute gradients to minimize total_loss.
     grads = opt.compute_gradients(total_loss)  # Returns a tensor with Gradients:Variable pairs
@@ -297,8 +298,8 @@ def _variable_with_weight_decay(name, shape, wd):
     dtype = tf.float32
 
     # Use the Xavier initializer here. Can Change to truncated normal
-    var = _variable_on_cpu(name, shape, tf.contrib.layers.xavier_initializer(dtype=dtype))
-    # var = _variable_on_cpu(name, shape, tf.truncated_normal_initializer(stddev=5e-2, dtype=dtype))
+    # var = _variable_on_cpu(name, shape, tf.contrib.layers.xavier_initializer(dtype=dtype))
+    var = _variable_on_cpu(name, shape, tf.truncated_normal_initializer(stddev=5e-2, dtype=dtype))
 
     if wd is not None:
         weight_decay = tf.multiply(tf.nn.l2_loss(var), wd, name='weight_loss')  # Uses half the L2 loss of Var*wd
