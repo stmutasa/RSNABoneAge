@@ -100,8 +100,8 @@ def img_protobuf(images, labels, name):
     # Pick a random entry in the images dict of arrays as our size model
     # rows = images[random.choice(list(images.keys()))].shape[0]
     # columns = images[random.choice(list(images.keys()))].shape[1]
-    rows = 512
-    columns = 512
+    rows = 256
+    columns = 256
     examples = len(images)
     # depth = images[0].shape[3]  # Depth is not defined since we have one color channel
 
@@ -146,7 +146,7 @@ def create_feature_dict(data_to_write={}, id=1, restore=False):
 
             # If this is our Data array, use the tostring() method.
             if key == 'data':
-                feature_dict_write[key] = _bytes_feature(feature.tostring())
+                feature_dict_write[key] = _bytes_feature(feature.tobytes())  #
 
             else:  # Otherwise convert to a string and encode as bytes to pass on
                 features = str(feature)
@@ -191,35 +191,31 @@ def load_protobuf(num_epochs, input_name, return_dict=True):
     # Parses one protocol buffer file into the features dictionary which maps keys to tensors with the data
     features = tf.parse_single_example(serialized_example, features=feature_dict)
 
-    # Change the raw image data to floating point integer tensors stored in image
-    # To do: Generalize this
+    # Change the raw image data to 8 bit integers first
+    image = tf.decode_raw(features['data'], tf.uint8)  # Set this examples image to a blank tensor with integer data
+    image = tf.reshape(image, shape=[512, 512, 1])  # Set the dimensions of the image ( must equal input dims here)
 
-    image = tf.decode_raw(features['data'], tf.float32)  # Set this examples image to a blank tensor with float data
-    # Use this to set the size of our image tensor to a 1 dimensional tensor
-    # img_shape = [256 * 256]
-    # image.set_shape(img_shape)
-    image = tf.reshape(image, shape=[256, 256, 1])
-    tf.summary.image('pre float img', tf.reshape(image, shape=[1, 256, 256, 1]), max_outputs=1)
-
-    # Image is now a handle to : "("DecodeRaw:0", shape=(65536,), dtype=float32)"
 
     # Cast all our data to 32 bit floating point units. Cannot convert string to number unless you use that function
-    image_float = tf.cast(image, tf.float32)
+    image = tf.cast(image, tf.float32)
     id = tf.cast(features['id'], tf.float32)
     label1 = tf.string_to_number(features['label1'], tf.float32)
     label2 = tf.string_to_number(features['label2'], tf.float32)
 
-    # create float summary image
-    tf.summary.image('post float img', tf.reshape(image_float, shape=[1, 256, 256, 1]), max_outputs=1)
-
     # Apply image pre processing here too:
-    # image_float = tf.image.per_image_standardization(image=image)
+    image = tf.image.per_image_standardization(image=image)
+
+    # Resize images
+    image = tf.image.resize_images(image, [256, 256])
+
+    # create float summary image
+    tf.summary.image('Normalized Image', tf.reshape(image, shape=[1, 256, 256, 1]), max_outputs=1)
 
     # Return data as a dictionary by default, otherwise return it as just the raw sets
     if not return_dict:
-        return image_float, label1, label2, id
+        return image, label1, label2, id
     else:
-        final_data = {'image': image_float, 'label1': label1, 'label2': label2}
+        final_data = {'image': image, 'label1': label1, 'label2': label2}
         returned_dict = {}
         returned_dict['id'] = id
         for key, feature in final_data.items():

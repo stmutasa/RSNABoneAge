@@ -15,7 +15,6 @@ import re  # regular expression operations for the print statements
 import glob  # Simple but killer file reading module
 
 import numpy as np
-import matplotlib.pyplot as plt
 
 import tensorflow as tf
 import Input
@@ -57,88 +56,22 @@ def forward_pass(images, phase_train1=True):
     phase_train = tf.Variable(phase_train1, dtype=tf.bool, trainable=False)
 
     # The first convolutional layer
-    with tf.variable_scope('conv1') as scope:  # Define this variable scope as conv1
-        kernel = _variable_with_weight_decay('weights', shape=[7, 7, 1, 96], wd=0.0)  # Xavier init. No WD
-        conv = tf.nn.conv2d(images, kernel, [1, 2, 2, 1], padding='SAME')  # Create a 2D tensor with BATCH_SIZE rows
-
-        # Insert batch norm layer:
-        # norm = batch_norm_layer(conv, 96, 'norm1', phase_train) My version
-
-        # TF Dev version
-        # norm = batch_norm(conv, decay=0.999, center=True, scale=True, updates_collections=None,
-        #                     is_training=True, reuse=None, trainable=True)
-
-        # Contrib version
-        norm = tf.cond(phase_train,
-                       lambda: tf.contrib.layers.batch_norm(conv, activation_fn=tf.nn.relu, is_training=True,
-                                                            reuse=None),
-                       lambda: tf.contrib.layers.batch_norm(conv, activation_fn=tf.nn.relu,
-                                                            is_training=False, reuse=True, scope='norm'))
-
-        conv1 = tf.nn.elu(norm, name=scope.name)  # Use ELU to prevent sparsity.
-        _activation_summary(conv1)  # Create a histogram/scalar summary of the conv1 layer
-
+    conv1 = convolution('Conv1', images, 1, 7, 96, phase_train=phase_train)
 
     # The second convolutional layer
-    with tf.variable_scope('conv2') as scope:  # Define this variable scope as conv1
-        kernel = _variable_with_weight_decay('weights', shape=[5, 5, 96, 256], wd=0.0)  # Xavier init. No WD
-        conv = tf.nn.conv2d(conv1, kernel, [1, 2, 2, 1], padding='VALID')  # Create a 2D tensor with BATCH_SIZE rows
-
-        norm = tf.cond(phase_train,
-                       lambda: tf.contrib.layers.batch_norm(conv, activation_fn=tf.nn.relu, is_training=True,
-                                                            reuse=None),
-                       lambda: tf.contrib.layers.batch_norm(conv, activation_fn=tf.nn.relu,
-                                                            is_training=False, reuse=True, scope='norm'))
-
-        conv2 = tf.nn.elu(norm, name=scope.name)  # Use ELU to prevent sparsity.
-        _activation_summary(conv2)  # Create a histogram/scalar summary of the conv1 layer
+    conv2 = convolution('Conv2', conv1, 96, 5, 256, phase_train=phase_train)
 
     # The third convolutional layer
-    with tf.variable_scope('conv3') as scope:  # Define this variable scope as conv1
-        kernel = _variable_with_weight_decay('weights', shape=[3, 3, 256, 128], wd=0.0)  # Xavier init. No WD
-        conv = tf.nn.conv2d(conv2, kernel, [1, 2, 2, 1], padding='VALID')  # Create a 2D tensor with BATCH_SIZE rows
-
-        norm = tf.cond(phase_train,
-                       lambda: tf.contrib.layers.batch_norm(conv, activation_fn=tf.nn.relu, is_training=True,
-                                                            reuse=None),
-                       lambda: tf.contrib.layers.batch_norm(conv, activation_fn=tf.nn.relu,
-                                                            is_training=False, reuse=True, scope='norm'))
-
-        conv3 = tf.nn.elu(norm, name=scope.name)  # Use ELU to prevent sparsity.
-        _activation_summary(conv3)  # Create a histogram/scalar summary of the conv1 layer
-
+    conv3 = convolution('Conv3', conv2, 256, 3, 128, phase_train=phase_train)
 
     # The 4th convolutional layer
-    with tf.variable_scope('conv4') as scope:  # Define this variable scope as conv1
-        kernel = _variable_with_weight_decay('weights', shape=[3, 3, 128, 128], wd=0.0)  # Xavier init. No WD
-        conv = tf.nn.conv2d(conv3, kernel, [1, 2, 2, 1], padding='VALID')  # Create a 2D tensor with BATCH_SIZE rows
-
-        norm = tf.cond(phase_train,
-                       lambda: tf.contrib.layers.batch_norm(conv, activation_fn=tf.nn.relu, is_training=True,
-                                                            reuse=None),
-                       lambda: tf.contrib.layers.batch_norm(conv, activation_fn=tf.nn.relu,
-                                                            is_training=False, reuse=True, scope='norm'))
-
-        conv4 = tf.nn.elu(norm, name=scope.name)  # Use ELU to prevent sparsity.
-        _activation_summary(conv4)  # Create a histogram/scalar summary of the conv1 layer
-
+    conv4 = convolution('Conv4', conv3, 128, 3, 128, phase_train=phase_train)
 
     # To Do: Insert the affine transform layer here
     # affine1 = 0
 
     # The 5th convolutional layer
-    with tf.variable_scope('conv5') as scope:  # Define this variable scope as conv1
-        kernel = _variable_with_weight_decay('weights', shape=[3, 3, 128, 128], wd=0.0)  # Xavier init. No WD
-        conv = tf.nn.conv2d(conv4, kernel, [1, 2, 2, 1], padding='VALID')  # Create a 2D tensor with BATCH_SIZE rows
-
-        norm = tf.cond(phase_train,
-                       lambda: tf.contrib.layers.batch_norm(conv, activation_fn=tf.nn.relu, is_training=True,
-                                                            reuse=None),
-                       lambda: tf.contrib.layers.batch_norm(conv, activation_fn=tf.nn.relu,
-                                                            is_training=False, reuse=True, scope='norm'))
-
-        conv5 = tf.nn.elu(norm, name=scope.name)  # Use ELU to prevent sparsity.
-        _activation_summary(conv5)  # Create a histogram/scalar summary of the conv1 layer
+    conv5 = convolution('Conv5', conv4, 128, 3, 128, phase_train=phase_train)
 
     # To Do: Maybe apply dropout here
 
@@ -146,7 +79,7 @@ def forward_pass(images, phase_train1=True):
     with tf.variable_scope('linear1') as scope:
         reshape = tf.reshape(conv5, [FLAGS.batch_size, -1])  # Move everything to n by b matrix for a single matmul
         dim = reshape.get_shape()[1].value  # Get columns for the matrix multiplication
-        weights = _variable_with_weight_decay('weights', shape=[dim, 128], wd=0.0)
+        weights = tf.get_variable('weights', shape=[dim, 128], initializer=tf.contrib.layers.xavier_initializer())
 
         norm = tf.cond(phase_train,
                        lambda: tf.contrib.layers.batch_norm(weights, activation_fn=tf.nn.relu, is_training=True,
@@ -161,11 +94,26 @@ def forward_pass(images, phase_train1=True):
     with tf.variable_scope('linear2') as scope:
         W = tf.Variable(np.random.randn(128, 1), name='Weights', dtype=tf.float32)
         b = tf.Variable(np.ones(FLAGS.batch_size), name='Bias', dtype=tf.float32)
-        Logits1 = tf.add(tf.matmul(fc7, W), b, name=scope.name)
-        Logits = tf.slice(Logits1, [0, 0], [1, 4])
+        Logits = tf.add(tf.matmul(fc7, W), b, name=scope.name)
+        Logits = tf.slice(Logits, [0, 0], [4, 1])
+        Logits = tf.transpose(Logits)
         _activation_summary(Logits)
 
     return Logits  # Return whatever the name of the final logits variable is
+
+
+def convolution(scope, X, C, F, K, S=2, padding='VALID', phase_train=None):
+    with tf.variable_scope(scope) as scope:
+        kernel = tf.get_variable('Weights', shape=[F, F, C, K], initializer=tf.contrib.layers.xavier_initializer())
+        conv = tf.nn.conv2d(X, kernel, [1, S, S, 1], padding=padding)  # Create a 2D tensor with BATCH_SIZE rows
+
+        norm = tf.cond(phase_train,
+                       lambda: tf.contrib.layers.batch_norm(conv, is_training=True, reuse=None),
+                       lambda: tf.contrib.layers.batch_norm(conv, is_training=False, reuse=True, scope='norm'))
+
+        conv = tf.nn.elu(norm, name=scope.name)  # Use ELU to prevent sparsity.
+        _activation_summary(conv)  # Create a histogram/scalar summary of the conv1 layer
+        return conv
 
 
 def batch_norm_layer(input_layer, kernels, scope, phase_train):
@@ -326,16 +274,13 @@ def inputs(num_epochs):
         for file_id in globs:  # Loop through every jpeg in the data directory
             raw = Input.read_image(file_id)  # First read the image into a unit8 numpy array named raw
             #raw = Input.pre_process_image(raw)  # Apply the pre processing of the image
+            # raw = (raw - np.mean(raw)) / np.std(raw)
 
             # Append the dictionary with the key: value pair of the basename (not full globname) and processed image
             images[os.path.splitext(os.path.basename(file_id))[0]] = raw
             i += 1
             if i % 300 == 0:
                 print('     %i Images Loaded at %s, generating sample...' % (i, raw.shape))  # Just to update us
-                raw2 = (raw - np.mean(raw)) / np.std(raw)
-                plt.title(file_id)
-                plt.imshow(raw2, cmap=plt.cm.gray)
-                plt.show()
 
         label_dir = os.path.join(FLAGS.data_dir,
                                  'handdictionary')  # The labels dict is saved under handdictionary binary
@@ -355,7 +300,5 @@ def inputs(num_epochs):
     # Part 4: Create randomized batches
     print('----------------------------------Creating and randomizing batches...')
     data = Input.randomize_batches(data, FLAGS.batch_size)
-
-    tf.summary.image('post randomize batches img', data['image'], max_outputs=1)
 
     return data
