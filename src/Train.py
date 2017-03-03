@@ -21,7 +21,7 @@ tf.app.flags.DEFINE_string('train_dir', 'training', """Directory to write event 
 tf.app.flags.DEFINE_integer('max_steps', 50000, """Number of batches to run""")
 tf.app.flags.DEFINE_integer('num_epochs', 1000, """How many epochs to run""")
 tf.app.flags.DEFINE_integer('test_interval', 200, """How often to test the model during training""")
-tf.app.flags.DEFINE_integer('print_interval', 100, """How often to print a summary to console during training""")
+tf.app.flags.DEFINE_integer('print_interval', 500, """How often to print a summary to console during training""")
 tf.app.flags.DEFINE_integer('checkpoint_steps', 500, """How many steps to iterate before saving a checkpoint""")
 tf.app.flags.DEFINE_integer('summary_steps', 500, """How many steps to iterate before writing a summary""")
 tf.app.flags.DEFINE_boolean('log_device_placement', False, """Yes or no""")
@@ -84,7 +84,7 @@ def train():
                 examples_per_sec = num_examples_per_step / duration
                 sec_per_batch = float(duration)
                 format_str = ('%s: Step %d, Loss: = %.4f (%.1f examples/sec; %.3f sec/batch)')
-                print(format_str % (datetime.now(), self._step, loss_value, examples_per_sec, sec_per_batch))
+                print(format_str % (datetime.now(), self._step, loss_value, examples_per_sec, sec_per_batch), end=" ")
 
                 # Test the data
                 predictions1, label1, loss1 = mon_sess.run([logits, avg_label, loss])
@@ -95,7 +95,7 @@ def train():
                 label *= 19
                 predictions *= 19
                 np.set_printoptions(precision=1)  # use numpy to print only the first sig fig
-                print('Predictions: %s, Label: %s, Loss: %s' % (predictions, label, loss1))
+                print('Predictions: %s, Label: %s, MSE: %s' % (predictions[0, 0], label[0], loss1))
                 # plt.imshow(image, cmap=plt.cm.gray)
                 # plt.show()
 

@@ -23,7 +23,7 @@ import Input
 FLAGS = tf.app.flags.FLAGS
 
 # Define some of the immutable variables
-tf.app.flags.DEFINE_integer('batch_size', 4, """Number of images to process in a batch.""")
+tf.app.flags.DEFINE_integer('batch_size', 16, """Number of images to process in a batch.""")
 tf.app.flags.DEFINE_string('data_dir', 'data/raw/', """Path to the data directory.""")
 
 # Maybe define lambda for the regularalization penalty in the loss function ("weight decay" in tensorflow)
@@ -95,7 +95,7 @@ def forward_pass(images, phase_train1=True):
         W = tf.Variable(np.random.randn(128, 1), name='Weights', dtype=tf.float32)
         b = tf.Variable(np.ones(FLAGS.batch_size), name='Bias', dtype=tf.float32)
         Logits = tf.add(tf.matmul(fc7, W), b, name=scope.name)
-        Logits = tf.slice(Logits, [0, 0], [4, 1])
+        Logits = tf.slice(Logits, [0, 0], [FLAGS.batch_size, 1])
         Logits = tf.transpose(Logits)
         _activation_summary(Logits)
 
