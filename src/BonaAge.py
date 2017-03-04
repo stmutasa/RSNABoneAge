@@ -23,7 +23,7 @@ import Input
 FLAGS = tf.app.flags.FLAGS
 
 # Define some of the immutable variables
-tf.app.flags.DEFINE_integer('batch_size', 16, """Number of images to process in a batch.""")
+tf.app.flags.DEFINE_integer('batch_size', 32, """Number of images to process in a batch.""")
 tf.app.flags.DEFINE_string('data_dir', 'data/raw/', """Path to the data directory.""")
 
 # Maybe define lambda for the regularalization penalty in the loss function ("weight decay" in tensorflow)
@@ -87,7 +87,7 @@ def forward_pass(images, phase_train1=True):
                        lambda: tf.contrib.layers.batch_norm(weights, activation_fn=tf.nn.relu,
                                                             is_training=False, reuse=True, scope='norm'))
 
-        fc7 = tf.nn.elu(tf.matmul(reshape, norm), name=scope.name)  # returns mat of size batch x 512
+        fc7 = tf.nn.relu(tf.matmul(reshape, norm), name=scope.name)  # returns mat of size batch x 512
         _activation_summary(fc7)
 
     # The linear layer
@@ -111,27 +111,9 @@ def convolution(scope, X, C, F, K, S=2, padding='VALID', phase_train=None):
                        lambda: tf.contrib.layers.batch_norm(conv, is_training=True, reuse=None),
                        lambda: tf.contrib.layers.batch_norm(conv, is_training=False, reuse=True, scope='norm'))
 
-        conv = tf.nn.elu(norm, name=scope.name)  # Use ELU to prevent sparsity.
+        conv = tf.nn.relu(norm, name=scope.name)  # Use ELU to prevent sparsity.
         _activation_summary(conv)  # Create a histogram/scalar summary of the conv1 layer
         return conv
-
-
-def batch_norm_layer(input_layer, kernels, scope, phase_train):
-    with tf.variable_scope(scope):
-        beta = tf.Variable(tf.constant(0.0, shape=[kernels]), name='beta', trainable=True)
-        gamma = tf.Variable(tf.constant(1.0, shape=[kernels]), name='gamma', trainable=True)
-        mean, variance = tf.nn.moments(input_layer, [0, 1, 2], name='moments')
-        ema = tf.train.ExponentialMovingAverage(decay=0.5)
-
-        def mean_var_with_update():
-            ema_apply_op = ema.apply([mean, variance])
-            with tf.control_dependencies([ema_apply_op]):
-                return tf.identity(mean), tf.identity(variance)
-
-        mean, var = tf.cond(phase_train, mean_var_with_update, lambda: (ema.average(mean), ema.average(variance)))
-        normed = tf.nn.batch_normalization(input_layer, mean, var, beta, gamma, 1e-3)
-
-        return normed
 
 
 def total_loss(logits, labels):

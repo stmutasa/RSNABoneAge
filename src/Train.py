@@ -5,7 +5,6 @@ from __future__ import division             # change the division operator to ou
 from __future__ import print_function       # use the print function from python 3
 
 import time                                 # to retreive current time
-from datetime import datetime  # Classes for manipulating the date and time displaying
 
 import BonaAge
 import numpy as np
@@ -18,8 +17,8 @@ FLAGS = tf.app.flags.FLAGS
 
 # Define some of the immutable variables
 tf.app.flags.DEFINE_string('train_dir', 'training', """Directory to write event logs and save checkpoint files""")
-tf.app.flags.DEFINE_integer('max_steps', 50000, """Number of batches to run""")
-tf.app.flags.DEFINE_integer('num_epochs', 1000, """How many epochs to run""")
+tf.app.flags.DEFINE_integer('max_steps', 500000, """Number of batches to run""")
+tf.app.flags.DEFINE_integer('num_epochs', 10000, """How many epochs to run""")
 tf.app.flags.DEFINE_integer('test_interval', 200, """How often to test the model during training""")
 tf.app.flags.DEFINE_integer('print_interval', 500, """How often to print a summary to console during training""")
 tf.app.flags.DEFINE_integer('checkpoint_steps', 500, """How many steps to iterate before saving a checkpoint""")
@@ -83,21 +82,19 @@ def train():
                 num_examples_per_step = FLAGS.batch_size
                 examples_per_sec = num_examples_per_step / duration
                 sec_per_batch = float(duration)
-                format_str = ('%s: Step %d, Loss: = %.4f (%.1f examples/sec; %.3f sec/batch)')
-                print(format_str % (datetime.now(), self._step, loss_value, examples_per_sec, sec_per_batch), end=" ")
+                format_str = ('Step %d, Loss: = %.4f (%.1f eg/s; %.3f s/bch)')
+                print(format_str % (self._step, loss_value, examples_per_sec, sec_per_batch), end=" ")
 
                 # Test the data
                 predictions1, label1, loss1 = mon_sess.run([logits, avg_label, loss])
                 predictions = predictions1.astype(np.float)
                 label = label1.astype(np.float)
-                # image2 = image1['image'].astype(np.float)
-                # image = np.reshape(image2, [256, 256])
                 label *= 19
                 predictions *= 19
                 np.set_printoptions(precision=1)  # use numpy to print only the first sig fig
-                print('Predictions: %s, Label: %s, MSE: %s' % (predictions[0, 0], label[0], loss1))
-                # plt.imshow(image, cmap=plt.cm.gray)
-                # plt.show()
+                print('Sample Predictions: Network(Real): %.1f (%.1f), %.1f (%.1f), %.1f (%.1f), %.1f (%.1f), '
+                      'MSE: %.4f' % (predictions[0, 0], label[0], predictions[0, 1], label[1], predictions[0, 2],
+                                     label[2], predictions[0, 3], label[3], loss1))
 
                 # Run a session to retrieve our summaries
                 summary = mon_sess.run(all_summaries)
