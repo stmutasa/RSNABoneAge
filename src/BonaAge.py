@@ -23,7 +23,7 @@ import Input
 FLAGS = tf.app.flags.FLAGS
 
 # Define some of the immutable variables
-tf.app.flags.DEFINE_integer('batch_size', 32, """Number of images to process in a batch.""")
+tf.app.flags.DEFINE_integer('batch_size', 4, """Number of images to process in a batch.""")
 tf.app.flags.DEFINE_string('data_dir', 'data/raw/', """Path to the data directory.""")
 
 # Maybe define lambda for the regularalization penalty in the loss function ("weight decay" in tensorflow)
@@ -44,7 +44,7 @@ INITIAL_LEARNING_RATE = 0.01  # Initial learning rate.
 TOWER_NAME = 'tower'  # If training on multiple GPU's, prefix all op names with tower_name
 
 
-def forward_pass(images, phase_train1=True):
+def forward_pass(images, keep_prob=1.0, phase_train1=True):
     """ This function builds the network architecture and performs the forward pass
         Args: Images = our input dictionary
         Returns: Logits (log odds units)
@@ -73,11 +73,12 @@ def forward_pass(images, phase_train1=True):
     # The 5th convolutional layer
     conv5 = convolution('Conv5', conv4, 128, 3, 128, phase_train=phase_train)
 
-    # To Do: Maybe apply dropout here
+    # Apply dropout here
+    dropout = tf.nn.dropout(conv5, keep_prob=keep_prob)
 
     # The Fc7 layer
     with tf.variable_scope('linear1') as scope:
-        reshape = tf.reshape(conv5, [FLAGS.batch_size, -1])  # Move everything to n by b matrix for a single matmul
+        reshape = tf.reshape(dropout, [FLAGS.batch_size, -1])  # Move everything to n by b matrix for a single matmul
         dim = reshape.get_shape()[1].value  # Get columns for the matrix multiplication
         weights = tf.get_variable('weights', shape=[dim, 128], initializer=tf.contrib.layers.xavier_initializer())
 

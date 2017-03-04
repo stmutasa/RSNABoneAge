@@ -20,10 +20,11 @@ tf.app.flags.DEFINE_string('train_dir', 'training', """Directory to write event 
 tf.app.flags.DEFINE_integer('max_steps', 500000, """Number of batches to run""")
 tf.app.flags.DEFINE_integer('num_epochs', 10000, """How many epochs to run""")
 tf.app.flags.DEFINE_integer('test_interval', 200, """How often to test the model during training""")
-tf.app.flags.DEFINE_integer('print_interval', 500, """How often to print a summary to console during training""")
+tf.app.flags.DEFINE_integer('print_interval', 100, """How often to print a summary to console during training""")
 tf.app.flags.DEFINE_integer('checkpoint_steps', 500, """How many steps to iterate before saving a checkpoint""")
 tf.app.flags.DEFINE_integer('summary_steps', 500, """How many steps to iterate before writing a summary""")
 tf.app.flags.DEFINE_boolean('log_device_placement', False, """Yes or no""")
+tf.app.flags.DEFINE_float('dropout_factor', 0.5, """ p value for the dropout layer""")
 
 
 # To do: Remove labels that are outside the normal range
@@ -39,11 +40,15 @@ def train():
     # Create a variable to count the number of train() calls equal to num of batches processed
     # global_step = tf.get_variable('global_step', [], initializer=tf.constant_initializer(0), trainable=False)
 
+    # # Use a placeholder for the keep prob for our dropout layer. Allows us to remove it during testing
+    # keep_prob = tf.placeholder(tf.float32)
+
     # Get a dictionary of our images, id's, and labels here
     images = BonaAge.inputs(None)  # Set num epochs to none
     tf.summary.image('pre logits img', images['image'], max_outputs=1)
+
     # Build a graph that computes the prediction from the inference model (Forward pass)
-    logits = BonaAge.forward_pass(images['image'])
+    logits = BonaAge.forward_pass(images['image'], keep_prob=FLAGS.dropout_factor)
 
     # Make our final label the average of the two labels
     avg_label = tf.transpose(tf.divide(tf.add(images['label1'], images['label2']), 38))
@@ -128,8 +133,7 @@ def train():
 
         try:
             while not mon_sess.should_stop():  # For the training coordinator. Only one thread here so we're good
-                mon_sess.run(
-                    train_op)  # Runs the operations and evaluates tensors in train_op - One cycle for this batch
+                mon_sess.run(train_op)  # Runs the operations and evaluates tensors in train_op - One cycle/batch
 
         except tf.errors.OutOfRangeError:
             print('Done with Training - Epoch limit reached')
