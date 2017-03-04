@@ -23,7 +23,7 @@ import Input
 FLAGS = tf.app.flags.FLAGS
 
 # Define some of the immutable variables
-tf.app.flags.DEFINE_integer('batch_size', 4, """Number of images to process in a batch.""")
+tf.app.flags.DEFINE_integer('batch_size', 32, """Number of images to process in a batch.""")
 tf.app.flags.DEFINE_string('data_dir', 'data/raw/', """Path to the data directory.""")
 
 # Maybe define lambda for the regularalization penalty in the loss function ("weight decay" in tensorflow)
@@ -67,10 +67,30 @@ def forward_pass(images, keep_prob=1.0, phase_train1=True):
     # The 4th convolutional layer
     conv4 = convolution('Conv4', conv3, 128, 3, 128, phase_train=phase_train)
 
-    # To Do: Insert the affine transform layer here
-    # affine1 = 0
+    # # To Do: Insert the affine transform layer here: Output of conv4 is [batch, 14,14,128]
+    # with tf.variable_scope('Transformer') as scope:
+    #
+    #     # Set up the localisation network to calculate floc(u):
+    #     W1 = tf.get_variable('Weights1', shape=[FLAGS.batch_size, 14, 128, 20], initializer=tf.contrib.layers.xavier_initializer())
+    #     B1 = tf.get_variable('Bias1', shape=[20], initializer=tf.contrib.layers.xavier_initializer())
+    #     W2 = tf.get_variable('Weights2', shape=[FLAGS.batch_size, 14, 20, 6], initializer=tf.contrib.layers.xavier_initializer())
+    #
+    #     # Always start with the identity transformation
+    #     initial = np.array([[1.0, 0, 0], [0, 1.0, 0]])
+    #     initial = initial.astype('float32')
+    #     initial = initial.flatten()
+    #     B2 = tf.Variable(initial_value=initial, name='IDFunction')
+    #
+    #     # Define the two layers of the localisation network
+    #     H1 = tf.nn.tanh(tf.matmul(conv4, W1) + B1)
+    #     H2 = tf.nn.tanh(tf.matmul(H1, W2) + B2)
+    #
+    #     # Define the output size to the original dimensions
+    #     output_size = (FLAGS.batch_size, 14, 14, 1)
+    #     trans = transformer([-1, 14, 14, 128], H2, output_size)
 
     # The 5th convolutional layer
+    # conv5 = convolution('Conv5', trans, 1, 3, 128, phase_train=phase_train)
     conv5 = convolution('Conv5', conv4, 128, 3, 128, phase_train=phase_train)
 
     # Apply dropout here
@@ -201,42 +221,6 @@ def _activation_summary(x):
     tf.summary.scalar(tensor_name + '/sparsity', tf.nn.zero_fraction(x))  # " but with a scalar of the fraction of 0's
 
     return
-
-
-def _variable_on_cpu(name: object, shape: object, initializer: object):
-    """ Helper to create a variable stored on CPU memory.
-        Why do this? Well if you are using multiple GPU's it might be faster to store some things on the CPU since
-        copying from CPU to GPU is faster than GPU to GPU. Can change to let TF decide by deleting the cpu context code
-        Args:
-            name: The name of the variable
-            shape: the list of ints
-            initializer: the initializer for the vriable
-        Returns:
-            Variable tensor"""
-    dtype = tf.float32
-    var = tf.get_variable(name, shape, initializer=initializer, dtype=dtype)
-
-    return var
-
-
-def _variable_with_weight_decay(name, shape, wd):
-    """ Helper to initialize a normally distributed variable with weight decay if wd is specified.
-    Args:
-        name, the name
-        shape, the list of ints
-        stddev, the standard deviation of a truncated gussian
-        wd: add L2 loss decay multiplied by this float Can Change to L1 weight decay if needed"""
-    dtype = tf.float32
-
-    # Use the Xavier initializer here. Can Change to truncated normal
-    # var = _variable_on_cpu(name, shape, tf.contrib.layers.xavier_initializer(dtype=dtype))
-    var = _variable_on_cpu(name, shape, tf.truncated_normal_initializer(stddev=5e-2, dtype=dtype))
-
-    if wd is not None:
-        weight_decay = tf.multiply(tf.nn.l2_loss(var), wd, name='weight_loss')  # Uses half the L2 loss of Var*wd
-        tf.add_to_collection('losses', weight_decay)  # Add the calculated weight decay to the collection of losses
-
-    return var
 
 
 def inputs(num_epochs):
