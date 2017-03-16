@@ -93,12 +93,9 @@ def forward_pass(images, keep_prob=1.0, phase_train1=True):
     # conv5 = convolution('Conv5', trans, 1, 3, 128, phase_train=phase_train)
     conv5 = convolution('Conv5', conv4, 128, 3, 128, phase_train=phase_train)
 
-    # Apply dropout here
-    dropout = tf.nn.dropout(conv5, keep_prob=keep_prob)
-
     # The Fc7 layer
     with tf.variable_scope('linear1') as scope:
-        reshape = tf.reshape(dropout, [FLAGS.batch_size, -1])  # Move everything to n by b matrix for a single matmul
+        reshape = tf.reshape(conv5, [FLAGS.batch_size, -1])  # Move everything to n by b matrix for a single matmul
         dim = reshape.get_shape()[1].value  # Get columns for the matrix multiplication
         weights = tf.get_variable('weights', shape=[dim, 128], initializer=tf.contrib.layers.xavier_initializer())
 
@@ -109,6 +106,7 @@ def forward_pass(images, keep_prob=1.0, phase_train1=True):
                                                             is_training=False, reuse=True, scope='norm'))
 
         fc7 = tf.nn.relu(tf.matmul(reshape, norm), name=scope.name)  # returns mat of size batch x 512
+        fc7 = tf.nn.dropout(fc7, keep_prob=keep_prob)  # Apply dropout here
         _activation_summary(fc7)
 
     # The linear layer
@@ -120,7 +118,17 @@ def forward_pass(images, keep_prob=1.0, phase_train1=True):
         Logits = tf.transpose(Logits)
         _activation_summary(Logits)
 
-    return Logits  # Return whatever the name of the final logits variable is
+    # Calculate the L2 regularization penalty
+    L2_loss = FLAGS.l2_gamma * (tf.nn.l2_loss(conv1) + tf.nn.l2_loss(conv2) + tf.nn.l2_loss(conv3) +
+                                tf.nn.l2_loss(conv4) + tf.nn.l2_loss(conv5) + tf.nn.l2_loss(fc7) + tf.nn.l2_loss(W))
+
+    # Add it to the collection
+    tf.add_to_collection('losses', L2_loss)
+
+    # Create a summary scalar of L2 loss
+    tf.summary.scalar('L2 Loss Penalty', L2_loss)
+
+    return Logits, L2_loss  # Return whatever the name of the final logits variable is
 
 
 def convolution(scope, X, C, F, K, S=2, padding='VALID', phase_train=None):
@@ -128,17 +136,17 @@ def convolution(scope, X, C, F, K, S=2, padding='VALID', phase_train=None):
         kernel = tf.get_variable('Weights', shape=[F, F, C, K], initializer=tf.contrib.layers.xavier_initializer())
         conv = tf.nn.conv2d(X, kernel, [1, S, S, 1], padding=padding)  # Create a 2D tensor with BATCH_SIZE rows
 
-        norm = tf.cond(phase_train,
-                       lambda: tf.contrib.layers.batch_norm(conv, is_training=True, reuse=None),
-                       lambda: tf.contrib.layers.batch_norm(conv, is_training=False, reuse=True, scope='norm'))
+        # norm = tf.cond(phase_train,
+        #                lambda: tf.contrib.layers.batch_norm(conv, decay=0.999, is_training=True, reuse=None),
+        #                lambda: tf.contrib.layers.batch_norm(conv, is_training=False, reuse=True, scope='norm'))
 
-        conv = tf.nn.relu(norm, name=scope.name)  # Use ELU to prevent sparsity.
+        conv = tf.nn.relu(conv, name=scope.name)  # Use ELU to prevent sparsity.
         _activation_summary(conv)  # Create a histogram/scalar summary of the conv1 layer
         return conv
 
 
 def total_loss(logits, labels):
-    """ Add L2 loss to the trainable variables and a summary
+    """ Add Lloss to the trainable variables and a summary
         Args:
             logits: logits from the forward pass
             labels the true input labels, a 1-D tensor with 1 value for each image in the batch
@@ -157,11 +165,6 @@ def total_loss(logits, labels):
     # For now return MSE loss, add L2 regularization below later
     return loss
 
-    # total_loss is cross entropy loss plus L2 loss. L2 loss is added to the collection "losses"
-    #  when we use the _variable_with_weight decay function and a wd (lambda) value > 0
-    # return tf.add_n(tf.get_collection('losses'), name='total_loss')  # add_n is equal to a riemann sum operand
-
-
 def backward_pass(total_loss, global_step1, lr_decay=False):
     """ This function performs our backward pass and updates our gradients
     Args:
@@ -169,6 +172,7 @@ def backward_pass(total_loss, global_step1, lr_decay=False):
         global_step1 is the number of training steps we've done to this point, useful to implement learning rate decay
     Returns:
         train_op: operation for training"""
+
     if lr_decay:  # Use decaying learning rate if flag is true
         num_batches_per_epoch = NUM_EXAMPLES_PER_EPOCH_FOR_TRAIN / FLAGS.batch_size
         decay_steps = int(num_batches_per_epoch * NUM_EPOCHS_PER_DECAY)  # how many steps until we decay
@@ -179,7 +183,8 @@ def backward_pass(total_loss, global_step1, lr_decay=False):
     # Compute the gradients. Control_dependencies waits until the operations in the parameter is executed before
     # executing the rest of the block. This makes sure we don't update gradients until we have calculated the backprop
     # with tf.control_dependencies([loss_averages_op]):
-    opt = tf.train.AdamOptimizer(0.001)  # Create an AdamOptimizer graph: Can Change
+    opt = tf.train.AdamOptimizer(learning_rate=0.001, beta1=0.9,
+                                 beta2=0.999)  # Create an AdamOptimizer graph: Can Change
 
     # Use the optimizer above to compute gradients to minimize total_loss.
     grads = opt.compute_gradients(total_loss)  # Returns a tensor with Gradients:Variable pairs
@@ -193,12 +198,12 @@ def backward_pass(total_loss, global_step1, lr_decay=False):
     #     tf.summary.histogram(var.op.name, var)
 
     # Add histograms for the gradients we calculated above
-    # for grad, var in grads:
-    #     if grad is not None:
-    #         tf.summary.histogram(var.op.name + 'gradients', grad)
+    for grad, var in grads:
+        if grad is not None:
+            tf.summary.histogram(var.op.name + 'gradients', grad)
 
-    # Per TF Documentation: "Certain training algorithms like momentum benefit from keeping track of the moving average of variables during
-    # optimization. This improves results significantly."
+    # Per TF Documentation: "Certain training algorithms like momentum benefit from keeping track of the moving
+    # average of variables during optimization. This improves results significantly."
     # Basically this is equivalent to RMS Prop, unsure if it is helpful when you use the Adam optimizer To Do
     variable_averages = tf.train.ExponentialMovingAverage(MOVING_AVERAGE_DECAY, global_step1)
 
@@ -227,8 +232,11 @@ def inputs(num_epochs):
     """ This function loads our raw inputs, processes them to a protobuffer that is then saved and
         loads the protobuffer into a batch of tensors """
 
+    # First request what gender to train:
+    gender = input('Please enter what Gender you would like to train: -> ')
+
     # To Do: Skip part 1 and 2 if the protobuff already exists
-    if not os.path.isfile('data/boneageproto.tfrecords') and not os.path.isfile('data/boneageloadict'):
+    if not os.path.isfile('data/boneageproto.tfrecords'):  # and not os.path.isfile('data/boneageloadict'):
 
         # Part 1: Load the raw images and labels dictionary ---------------------------
         print('----------------------No existing records -- Loading Raw Data...')
@@ -239,9 +247,8 @@ def inputs(num_epochs):
 
         i = 0
         for file_id in globs:  # Loop through every jpeg in the data directory
+
             raw = Input.read_image(file_id)  # First read the image into a unit8 numpy array named raw
-            #raw = Input.pre_process_image(raw)  # Apply the pre processing of the image
-            # raw = (raw - np.mean(raw)) / np.std(raw)
 
             # Append the dictionary with the key: value pair of the basename (not full globname) and processed image
             images[os.path.splitext(os.path.basename(file_id))[0]] = raw
@@ -255,7 +262,7 @@ def inputs(num_epochs):
 
         # Part 2: Save the images and labels to protobuf -------------------------------
         print('------------------------------------Saving images to records...')
-        Input.img_protobuf(images, labels, 'bonageproto')
+        Input.img_protobuf(images, labels, 'bonageproto', gender=gender.upper())
 
     else:
         print('-------------------------Previously saved records found! Loading...')

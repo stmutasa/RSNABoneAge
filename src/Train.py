@@ -25,6 +25,7 @@ tf.app.flags.DEFINE_integer('checkpoint_steps', 1000, """How many steps to itera
 tf.app.flags.DEFINE_integer('summary_steps', 1000, """How many steps to iterate before writing a summary""")
 tf.app.flags.DEFINE_boolean('log_device_placement', False, """Yes or no""")
 tf.app.flags.DEFINE_float('dropout_factor', 0.5, """ p value for the dropout layer""")
+tf.app.flags.DEFINE_float('l2_gamma', 0.01, """ The gamma value for regularization loss""")
 
 
 # To do: Remove labels that are outside the normal range
@@ -34,27 +35,25 @@ def train():
     """ Train our network for a number of steps
     The 'with' statement tells python to try and execute the following code, and utilize a custom defined __exit__
     function once it is done or it fails """
+
     tf.reset_default_graph()  # Makes this the default graph where all ops will be added
     # Get the tensor that keeps track of step in this graph or create one if not there
     global_step = tf.contrib.framework.get_or_create_global_step()
-    # Create a variable to count the number of train() calls equal to num of batches processed
-    # global_step = tf.get_variable('global_step', [], initializer=tf.constant_initializer(0), trainable=False)
-
-    # # Use a placeholder for the keep prob for our dropout layer. Allows us to remove it during testing
-    # keep_prob = tf.placeholder(tf.float32)
 
     # Get a dictionary of our images, id's, and labels here
     images = BonaAge.inputs(None)  # Set num epochs to none
     tf.summary.image('pre logits img', images['image'], max_outputs=1)
 
     # Build a graph that computes the prediction from the inference model (Forward pass)
-    logits = BonaAge.forward_pass(images['image'], keep_prob=FLAGS.dropout_factor)
+    logits, l2loss = BonaAge.forward_pass(images['image'], keep_prob=FLAGS.dropout_factor)
 
     # Make our final label the average of the two labels
     avg_label = tf.transpose(tf.divide(tf.add(images['label1'], images['label2']), 38))
 
     # Calculate the total loss, adding L2 regularization
-    loss = BonaAge.total_loss(logits, avg_label)
+    mse_loss = BonaAge.total_loss(logits, avg_label)
+
+    loss = tf.add(mse_loss, l2loss, name='loss')
 
     # Build the backprop graph to train the model with one batch and update the parameters (Backward pass)
     train_op = BonaAge.backward_pass(loss, global_step, True)
@@ -91,7 +90,7 @@ def train():
                 print(format_str % (self._step, loss_value, examples_per_sec, sec_per_batch), end=" ")
 
                 # Test the data
-                predictions1, label1, loss1 = mon_sess.run([logits, avg_label, loss])
+                predictions1, label1, loss1 = mon_sess.run([logits, avg_label, mse_loss])
                 predictions = predictions1.astype(np.float)
                 label = label1.astype(np.float)
                 label *= 19
@@ -114,9 +113,7 @@ def train():
                 #     print ('Predictions: %s, Label: %s' %(predictions, label))
 
     # Creates a session initializer/restorer and hooks for checkpoint summary and saving
-    # (master='', is_chief=True, checkpoint_dir, scaffold=None, hooks=None, chief_only_hooks=None,
-    # save_checkpoint_secs=600, save_summaries_steps=100, config=None)
-    # config Proto sets options for configuring the sessin like run on GPU, allocate GPU memory etc.
+    # config Proto sets options for configuring the session like run on GPU, allocate GPU memory etc.
     with tf.train.MonitoredTrainingSession(checkpoint_dir=FLAGS.train_dir,
                                            hooks=[tf.train.StopAtStepHook(last_step=FLAGS.max_steps),
                                                   tf.train.NanTensorHook(loss),
@@ -143,21 +140,6 @@ def train():
             # Wait for threads to finish before closing session
             coord.join(threads)
             mon_sess.close()
-
-
-def cst(coord=None, sess=None, threads=None):
-    """ This function coordinates the execution of the graph"""
-    if coord is None:
-        coord = tf.train.Coordinator()  # Coordinates the timing and termination of threads
-        sess = tf.Session()
-        sess.run([tf.global_variables_initializer(), tf.local_variables_initializer()])  # Runs one "step"
-        threads = tf.train.start_queue_runners(sess=sess, coord=coord)  # Starts the queue runners in the graph
-        return coord, sess, threads
-    else:
-        coord.request_stop()  # Request a stop of threads. should_stop() will return True
-        coord.join(threads)  # Waits for threads to terminate
-        sess.close()
-        return
 
 
 def main(argv=None):  # pylint: disable=unused-argument

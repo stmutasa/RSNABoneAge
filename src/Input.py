@@ -62,33 +62,7 @@ def read_labels(filename):
     return labels
 
 
-# Not doing this before loading anymore
-
-# def pre_process_image(image, input_size=[512, 512], padding=[0, 0],
-#                       interpolation=cv2.INTER_LINEAR, masking=False):
-#     """ Pre processes the image: Resizes based on the specified input size, padding, and interpolation method """
-#
-#     # Center the data and divide by the standard deviation
-#     # image = (image - np.mean(image)) / np.std(image) removed, will have to do later to store smaller protobuf
-#
-#     # Resize the image
-#     resize_dims = np.array(input_size) - np.array(padding) * 2  # Different size arrays will be broadcast to the same
-#     pad_tuple = ((padding[0], padding[0]), (padding[1], padding[1]), (0, 0))  # set bilateral padding in X,Y and Z dims
-#     resized_image = cv2.resize(image, tuple(resize_dims), interpolation=interpolation)  # Use openCV to resize image
-#     #    image = np.pad(image, pad_tuple, mode='reflect')  # pad all the dimensions with the pad-tuple OHNOES
-#
-#     # If defined, use masking to turn 'empty space' in the image into invalid entries that won't be calculated
-#     if masking == True:
-#         mask = np.zeros(image.shape, 'bool')  # if masking, create an array with all values set to false
-#         mask = np.pad(mask, pad_tuple, mode='constant', constant_values=(True))  # pad the mask too
-#         if interpolation == cv2.INTER_NEAREST:
-#             image[mask] = 0
-#         return image, mask
-#
-#     return resized_image
-
-
-def img_protobuf(images, labels, name):
+def img_protobuf(images, labels, name, gender='F'):
     """ Combines the images and labels given and saves them to a TFRecords protocol buffer
         Will call this function one time each to save a training, validation and test set.
         Combine the image[index] as an element in the nested dictionary
@@ -97,22 +71,25 @@ def img_protobuf(images, labels, name):
             labels: A 2D Dictionary with image id:{x,y,z} pairs """
 
     # Next we need to store the original image dimensions for when we restore the protobuf binary to a usable form
-    # Pick a random entry in the images dict of arrays as our size model
-    # rows = images[random.choice(list(images.keys()))].shape[0]
-    # columns = images[random.choice(list(images.keys()))].shape[1]
     rows = 256
     columns = 256
     examples = len(images)
-    # depth = images[0].shape[3]  # Depth is not defined since we have one color channel
 
     filenames = os.path.join(records_file, name + '.tfrecords')  # Set the filenames for the protobuf
 
     # Define the class we will use to write the records to the .tfrecords protobuf. the init opens the file for writing
     writer = tf.python_io.TFRecordWriter(filenames)
-
+    counter = 0  # for testing
     # Loop through each example and append the protobuf with the specified features
     for index, feature in labels.items():
         if index not in images: continue  # Since we deleted some images, some of the labels won't exist
+
+        # Skip the gender not specified by the user
+        if labels[index]['Gender'] != gender:
+            counter += 1
+            print('skipping another, Skipped count: %s' % counter)
+            continue
+
         # Create our dictionary of values to store: Added some dimensions values that may be useful later on
         data = {'data': images[index],
                 'label1': labels[index]['Reading1'], 'label2': labels[index]['Reading2'],
@@ -122,15 +99,6 @@ def img_protobuf(images, labels, name):
         writer.write(example.SerializeToString())  # Converts example to serialized string and writes it in the protobuf
 
     writer.close()  # Close the file after writing
-
-    # Create a dictionary for values that will be retreived when we restore the protobuf
-    # create the feature data
-    feature_data_pre = {'data': None, 'label1': None, 'label2': None, 'height': None, 'width': None, 'examples': None}
-    feature_data = create_feature_dict(feature_data_pre, index, True)
-    # Save the feature data dictionary using pickle
-    # savename = os.path.join(records_file, 'boneageloadict')
-    # with open(savename, 'r+b') as file_handle:
-    #     pickle._dump(feature_data, file_handle)
 
     return
 
@@ -179,14 +147,10 @@ def load_protobuf(num_epochs, input_name, return_dict=True):
     reader = tf.TFRecordReader()  # Instantializes a TFRecordReader which outputs records from a TFRecords file
     _, serialized_example = reader.read(filename_queue)  # Returns the next record (key:value) produced by the reader
 
-    # Tutorial implementation Below --------------------------------------------------------------
-
     # Restore the feature dictionary to store the variables we will retrieve using the parse
     loadname = os.path.join(records_file, 'boneageloadict')
     with open(loadname, 'rb') as file_handle:
         feature_dict = pickle.load(file_handle)
-
-    # Q? Does defining the value in the feature dict as a type force that type on feed? if so why use decode raw
 
     # Parses one protocol buffer file into the features dictionary which maps keys to tensors with the data
     features = tf.parse_single_example(serialized_example, features=feature_dict)
@@ -194,7 +158,6 @@ def load_protobuf(num_epochs, input_name, return_dict=True):
     # Change the raw image data to 8 bit integers first
     image = tf.decode_raw(features['data'], tf.uint8)  # Set this examples image to a blank tensor with integer data
     image = tf.reshape(image, shape=[512, 512, 1])  # Set the dimensions of the image ( must equal input dims here)
-
 
     # Cast all our data to 32 bit floating point units. Cannot convert string to number unless you use that function
     image = tf.cast(image, tf.float32)
@@ -204,11 +167,13 @@ def load_protobuf(num_epochs, input_name, return_dict=True):
 
     # Apply image pre processing here:
     image = tf.image.random_flip_left_right(image)  # First randomly flip left/right
+    image = tf.image.random_flip_up_down(image)  # Up/down flip
     image = tf.image.random_brightness(image, max_delta=0.5)  # Apply random brightness
     image = tf.image.per_image_standardization(image=image)  # Subtract mean and div by variance
 
     # Resize images
-    image = tf.image.resize_images(image, [256, 256])
+    image = tf.image.resize_images(image, [320, 320])
+    image = tf.random_crop(image, [256, 256, 1])  # Random crop the image to a box 80% of the size
 
     # create float summary image
     tf.summary.image('Normalized Image', tf.reshape(image, shape=[1, 256, 256, 1]), max_outputs=1)
