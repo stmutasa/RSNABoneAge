@@ -25,7 +25,7 @@ tf.app.flags.DEFINE_integer('checkpoint_steps', 1000, """How many steps to itera
 tf.app.flags.DEFINE_integer('summary_steps', 1000, """How many steps to iterate before writing a summary""")
 tf.app.flags.DEFINE_boolean('log_device_placement', False, """Yes or no""")
 tf.app.flags.DEFINE_float('dropout_factor', 0.5, """ p value for the dropout layer""")
-tf.app.flags.DEFINE_float('l2_gamma', 0.01, """ The gamma value for regularization loss""")
+tf.app.flags.DEFINE_float('l2_gamma', 0.001, """ The gamma value for regularization loss""")
 
 
 # To do: Remove labels that are outside the normal range
@@ -49,6 +49,16 @@ def train():
 
     # Make our final label the average of the two labels
     avg_label = tf.transpose(tf.divide(tf.add(images['label1'], images['label2']), 38))
+
+    # Get some metrics
+    predictions2 = tf.transpose(tf.multiply(logits, 19))
+    labels2 = tf.transpose(tf.multiply(avg_label, 38))
+    MAE_loss = tf.contrib.metrics.streaming_mean_absolute_error(predictions2, labels2)
+
+    # For accuracy, use the nearest quarter integer as the correct value. (Multiply by 4 and round)
+    predictions2 = tf.round(tf.multiply(predictions2, 4))
+    labels2 = tf.round(tf.multiply(labels2, 4))
+    stream_accuracy = tf.contrib.metrics.streaming_accuracy(predictions2, labels2)
 
     # Calculate the total loss, adding L2 regularization
     mse_loss = BonaAge.total_loss(logits, avg_label)
@@ -86,19 +96,25 @@ def train():
                 num_examples_per_step = FLAGS.batch_size
                 examples_per_sec = num_examples_per_step / duration
                 sec_per_batch = float(duration)
-                format_str = ('Step %d, Loss: = %.4f (%.1f eg/s; %.3f s/bch)')
-                print(format_str % (self._step, loss_value, examples_per_sec, sec_per_batch), end=" ")
+                format_str = ('Step %d, Loss: = %.4f (%.1f eg/s;)')
+                print(format_str % (self._step, loss_value, examples_per_sec), end=" ")
 
                 # Test the data
-                predictions1, label1, loss1 = mon_sess.run([logits, avg_label, mse_loss])
+                predictions1, label1, loss1, mae1, sacc1 = mon_sess.run([logits, avg_label, mse_loss,
+                                                                         MAE_loss, stream_accuracy])
                 predictions = predictions1.astype(np.float)
                 label = label1.astype(np.float)
                 label *= 19
                 predictions *= 19
+                mae = mae1[1]
+                sacc = sacc1[1] * 100
                 np.set_printoptions(precision=1)  # use numpy to print only the first sig fig
-                print('Sample Predictions: Network(Real): %.1f (%.1f), %.1f (%.1f), %.1f (%.1f), %.1f (%.1f), '
-                      'MSE: %.4f' % (predictions[0, 0], label[0], predictions[0, 1], label[1], predictions[0, 2],
-                                     label[2], predictions[0, 3], label[3], loss1))
+                print('Eg. Predictions: Network(Real): %.1f (%.1f), %.1f (%.1f), %.1f (%.1f), %.1f (%.1f), '
+                      'MSE: %.4f, MAE: %.4f, Accuracy: %.2f percent (%.4f)' % (predictions[0, 0],
+                                                                               label[0], predictions[0, 1], label[1],
+                                                                               predictions[0, 2],
+                                                                               label[2], predictions[0, 3], label[3],
+                                                                               loss1, mae, sacc, sacc1[1]))
 
                 # Run a session to retrieve our summaries
                 summary = mon_sess.run(all_summaries)

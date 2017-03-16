@@ -154,16 +154,16 @@ def total_loss(logits, labels):
             Your loss value as a Tensor (float)
     """
     # Calculate MSE loss: square root of the mean of the square of an elementwise subtraction of logits and labels
-    loss = tf.reduce_mean(tf.square(labels - logits))
+    MSE_loss = tf.reduce_mean(tf.square(labels - logits))
 
-    # Output the summary of the MSE
-    tf.summary.scalar('Mean Square Error', loss)
+    # Output the summary of the MSE and MAE
+    tf.summary.scalar('Mean Square Error', MSE_loss)
 
     # Add these losses to the collection
-    tf.add_to_collection('losses', loss)
+    tf.add_to_collection('losses', MSE_loss)
 
     # For now return MSE loss, add L2 regularization below later
-    return loss
+    return MSE_loss
 
 def backward_pass(total_loss, global_step1, lr_decay=False):
     """ This function performs our backward pass and updates our gradients

@@ -87,7 +87,6 @@ def img_protobuf(images, labels, name, gender='F'):
         # Skip the gender not specified by the user
         if labels[index]['Gender'] != gender:
             counter += 1
-            print('skipping another, Skipped count: %s' % counter)
             continue
 
         # Create our dictionary of values to store: Added some dimensions values that may be useful later on
@@ -99,6 +98,7 @@ def img_protobuf(images, labels, name, gender='F'):
         writer.write(example.SerializeToString())  # Converts example to serialized string and writes it in the protobuf
 
     writer.close()  # Close the file after writing
+    print('Skipped: %s non-gender matched images' % counter)
 
     return
 
