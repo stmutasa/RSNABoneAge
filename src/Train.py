@@ -20,15 +20,12 @@ tf.app.flags.DEFINE_string('train_dir', 'training', """Directory to write event 
 tf.app.flags.DEFINE_integer('max_steps', 500000, """Number of batches to run""")
 tf.app.flags.DEFINE_integer('num_epochs', 10000, """How many epochs to run""")
 tf.app.flags.DEFINE_integer('test_interval', 200, """How often to test the model during training""")
-tf.app.flags.DEFINE_integer('print_interval', 500, """How often to print a summary to console during training""")
+tf.app.flags.DEFINE_integer('print_interval', 200, """How often to print a summary to console during training""")
 tf.app.flags.DEFINE_integer('checkpoint_steps', 1000, """How many steps to iterate before saving a checkpoint""")
 tf.app.flags.DEFINE_integer('summary_steps', 1000, """How many steps to iterate before writing a summary""")
 tf.app.flags.DEFINE_boolean('log_device_placement', False, """Yes or no""")
 tf.app.flags.DEFINE_float('dropout_factor', 0.5, """ p value for the dropout layer""")
-tf.app.flags.DEFINE_float('l2_gamma', 0.001, """ The gamma value for regularization loss""")
-
-
-# To do: Remove labels that are outside the normal range
+tf.app.flags.DEFINE_float('l2_gamma', 0.01, """ The gamma value for regularization loss""")
 
 # Define a custom training class
 def train():
@@ -37,28 +34,23 @@ def train():
     function once it is done or it fails """
 
     tf.reset_default_graph()  # Makes this the default graph where all ops will be added
+
     # Get the tensor that keeps track of step in this graph or create one if not there
     global_step = tf.contrib.framework.get_or_create_global_step()
 
     # Get a dictionary of our images, id's, and labels here
-    images = BonaAge.inputs(None)  # Set num epochs to none
-    tf.summary.image('pre logits img', images['image'], max_outputs=1)
+    images = BonaAge.inputs()
 
     # Build a graph that computes the prediction from the inference model (Forward pass)
     logits, l2loss = BonaAge.forward_pass(images['image'], keep_prob=FLAGS.dropout_factor)
 
     # Make our final label the average of the two labels
-    avg_label = tf.transpose(tf.divide(tf.add(images['label1'], images['label2']), 38))
+    avg_label = tf.transpose(tf.divide(images['age'], 19))
 
     # Get some metrics
     predictions2 = tf.transpose(tf.multiply(logits, 19))
-    labels2 = tf.transpose(tf.multiply(avg_label, 38))
-    MAE_loss = tf.contrib.metrics.streaming_mean_absolute_error(predictions2, labels2)
-
-    # For accuracy, use the nearest quarter integer as the correct value. (Multiply by 4 and round)
-    predictions2 = tf.round(tf.multiply(predictions2, 4))
-    labels2 = tf.round(tf.multiply(labels2, 4))
-    stream_accuracy = tf.contrib.metrics.streaming_accuracy(predictions2, labels2)
+    labels2 = tf.transpose(tf.multiply(avg_label, 19))
+    MAE_loss = tf.reduce_mean(tf.abs(tf.subtract(predictions2, labels2)))
 
     # Calculate the total loss, adding L2 regularization
     mse_loss = BonaAge.total_loss(logits, avg_label)
@@ -66,7 +58,7 @@ def train():
     loss = tf.add(mse_loss, l2loss, name='loss')
 
     # Build the backprop graph to train the model with one batch and update the parameters (Backward pass)
-    train_op = BonaAge.backward_pass(loss, global_step, True)
+    train_op = BonaAge.backward_pass(loss, global_step)
 
     # Merge the summaries
     all_summaries = tf.summary.merge_all()
@@ -95,26 +87,31 @@ def train():
             if self._step % FLAGS.print_interval == 0:  # This statement will print loss, step and other stuff
                 num_examples_per_step = FLAGS.batch_size
                 examples_per_sec = num_examples_per_step / duration
-                sec_per_batch = float(duration)
                 format_str = ('Step %d, Loss: = %.4f (%.1f eg/s;)')
                 print(format_str % (self._step, loss_value, examples_per_sec), end=" ")
 
                 # Test the data
-                predictions1, label1, loss1, mae1, sacc1 = mon_sess.run([logits, avg_label, mse_loss,
-                                                                         MAE_loss, stream_accuracy])
+                predictions1, label1, loss1, mae = mon_sess.run([predictions2, labels2, mse_loss, MAE_loss])
+
                 predictions = predictions1.astype(np.float)
                 label = label1.astype(np.float)
-                label *= 19
-                predictions *= 19
-                mae = mae1[1]
-                sacc = sacc1[1] * 100
+
+                right = 0.0
+
+                for i in range(0, predictions.size - 1):
+                    if abs(predictions[i] - label[i]) < 0.833:  # If difference is less than 10 m
+                        right += 1
+                    elif abs(predictions[i] - label[i]) < 1.667:  # 2 standard deviations
+                        right += 0.5
+
+                acc = (right / (predictions.size - 1)) * 100
+
                 np.set_printoptions(precision=1)  # use numpy to print only the first sig fig
                 print('Eg. Predictions: Network(Real): %.1f (%.1f), %.1f (%.1f), %.1f (%.1f), %.1f (%.1f), '
-                      'MSE: %.4f, MAE: %.4f, Accuracy: %.2f percent (%.4f)' % (predictions[0, 0],
-                                                                               label[0], predictions[0, 1], label[1],
-                                                                               predictions[0, 2],
-                                                                               label[2], predictions[0, 3], label[3],
-                                                                               loss1, mae, sacc, sacc1[1]))
+                      'MSE: %.4f, MAE: %.4f, Accuracy: %.2f %%' % (predictions[0],
+                                                                   label[0], predictions[1], label[1], predictions[2],
+                                                                   label[2], predictions[3],
+                                                                   label[3], loss1, mae, acc))
 
                 # Run a session to retrieve our summaries
                 summary = mon_sess.run(all_summaries)

@@ -23,23 +23,15 @@ import Input
 FLAGS = tf.app.flags.FLAGS
 
 # Define some of the immutable variables
-tf.app.flags.DEFINE_integer('batch_size', 32, """Number of images to process in a batch.""")
+tf.app.flags.DEFINE_integer('batch_size', 16, """Number of images to process in a batch.""")
+tf.app.flags.DEFINE_float('learning_rate', 0.001, """Initial learning rate""")
 tf.app.flags.DEFINE_string('data_dir', 'data/raw/', """Path to the data directory.""")
 
-# Maybe define lambda for the regularalization penalty in the loss function ("weight decay" in tensorflow)
-# Maybe define whether to use L1 or L2 regularization
-
-# Global constants described in the input file to handle input sizes etc
-IMAGE_SIZE = 0
-NUM_CLASSES = 0
-NUM_EXAMPLES_PER_EPOCH_FOR_TRAIN = 100
-NUM_EXAMPLES_PER_EPOCH_FOR_EVAL = 0
-
 # Constants we will use if we decide to use decaying learning rate
-MOVING_AVERAGE_DECAY = 0.9999  # The decay to use for the moving average. (RMSProp)
+MOVING_AVERAGE_DECAY = 0.999  # The decay to use for the moving average. (RMSProp)
 NUM_EPOCHS_PER_DECAY = 2.0  # Epochs after which learning rate decays.
 LEARNING_RATE_DECAY_FACTOR = 1.0  # Learning rate decay factor.
-INITIAL_LEARNING_RATE = 0.01  # Initial learning rate.
+Num_Examples = 16
 
 TOWER_NAME = 'tower'  # If training on multiple GPU's, prefix all op names with tower_name
 
@@ -98,14 +90,7 @@ def forward_pass(images, keep_prob=1.0, phase_train1=True):
         reshape = tf.reshape(conv5, [FLAGS.batch_size, -1])  # Move everything to n by b matrix for a single matmul
         dim = reshape.get_shape()[1].value  # Get columns for the matrix multiplication
         weights = tf.get_variable('weights', shape=[dim, 128], initializer=tf.contrib.layers.xavier_initializer())
-
-        norm = tf.cond(phase_train,
-                       lambda: tf.contrib.layers.batch_norm(weights, activation_fn=tf.nn.relu, is_training=True,
-                                                            reuse=None),
-                       lambda: tf.contrib.layers.batch_norm(weights, activation_fn=tf.nn.relu,
-                                                            is_training=False, reuse=True, scope='norm'))
-
-        fc7 = tf.nn.relu(tf.matmul(reshape, norm), name=scope.name)  # returns mat of size batch x 512
+        fc7 = tf.nn.relu(tf.matmul(reshape, weights), name=scope.name)  # returns mat of size batch x 512
         fc7 = tf.nn.dropout(fc7, keep_prob=keep_prob)  # Apply dropout here
         _activation_summary(fc7)
 
@@ -116,7 +101,6 @@ def forward_pass(images, keep_prob=1.0, phase_train1=True):
         Logits = tf.add(tf.matmul(fc7, W), b, name=scope.name)
         Logits = tf.slice(Logits, [0, 0], [FLAGS.batch_size, 1])
         Logits = tf.transpose(Logits)
-        _activation_summary(Logits)
 
     # Calculate the L2 regularization penalty
     L2_loss = FLAGS.l2_gamma * (tf.nn.l2_loss(conv1) + tf.nn.l2_loss(conv2) + tf.nn.l2_loss(conv3) +
@@ -165,7 +149,8 @@ def total_loss(logits, labels):
     # For now return MSE loss, add L2 regularization below later
     return MSE_loss
 
-def backward_pass(total_loss, global_step1, lr_decay=False):
+
+def backward_pass(total_loss, global_step1):
     """ This function performs our backward pass and updates our gradients
     Args:
         total_loss is the summed loss caculated above
@@ -173,45 +158,18 @@ def backward_pass(total_loss, global_step1, lr_decay=False):
     Returns:
         train_op: operation for training"""
 
-    if lr_decay:  # Use decaying learning rate if flag is true
-        num_batches_per_epoch = NUM_EXAMPLES_PER_EPOCH_FOR_TRAIN / FLAGS.batch_size
-        decay_steps = int(num_batches_per_epoch * NUM_EPOCHS_PER_DECAY)  # how many steps until we decay
-        lr = tf.train.exponential_decay(INITIAL_LEARNING_RATE, global_step1, decay_steps,
-                                        LEARNING_RATE_DECAY_FACTOR, staircase=True)  # Can Change to another type
-        tf.summary.scalar('learning_rate', lr)  # Output a scalar sumamry to TensorBoard
+    # Compute the gradients. Multiple alternate methods grayed out. So far Adam is winning by a mile
+    opt = tf.train.AdamOptimizer(learning_rate=FLAGS.learning_rate, beta1=0.9, beta2=0.999)
+    # opt = tf.train.ProximalGradientDescentOptimizer(lr,l2_regularization_strength=FLAGS.l2_gamma)
+    # opt = tf.train.GradientDescentOptimizer(lr)
 
-    # Compute the gradients. Control_dependencies waits until the operations in the parameter is executed before
-    # executing the rest of the block. This makes sure we don't update gradients until we have calculated the backprop
-    # with tf.control_dependencies([loss_averages_op]):
-    opt = tf.train.AdamOptimizer(learning_rate=0.001, beta1=0.9,
-                                 beta2=0.999)  # Create an AdamOptimizer graph: Can Change
-
-    # Use the optimizer above to compute gradients to minimize total_loss.
-    grads = opt.compute_gradients(total_loss)  # Returns a tensor with Gradients:Variable pairs
-
-    # Now actually apply the gradients
-    apply_gradient_op = opt.apply_gradients(grads, global_step1)  # Returns an operation that applies the gradients
+    # Compute then apply the gradients
+    train_op = opt.minimize(total_loss, global_step1, name='train')
 
     # Add histograms for the trainable variables. i.e. the collection of variables created with Trainable=True
     # These include the biases, the activation layers (nonlinearities) and weights
-    # for var in tf.trainable_variables():
-    #     tf.summary.histogram(var.op.name, var)
-
-    # Add histograms for the gradients we calculated above
-    for grad, var in grads:
-        if grad is not None:
-            tf.summary.histogram(var.op.name + 'gradients', grad)
-
-    # Per TF Documentation: "Certain training algorithms like momentum benefit from keeping track of the moving
-    # average of variables during optimization. This improves results significantly."
-    # Basically this is equivalent to RMS Prop, unsure if it is helpful when you use the Adam optimizer To Do
-    variable_averages = tf.train.ExponentialMovingAverage(MOVING_AVERAGE_DECAY, global_step1)
-
-    # Applies the RMS prop like normalization to all the variables in the trainable variables collection. Saves the
-    # results to the moving average variables collection
-    variable_averages_op = variable_averages.apply(tf.trainable_variables())
-    with tf.control_dependencies([apply_gradient_op, variable_averages_op]):  # Wait until we apply the gradients
-        train_op = tf.no_op(name='train')  # Does nothing. placeholder to control the execution of the graph
+    for var in tf.trainable_variables():
+        tf.summary.histogram(var.op.name, var)
 
     return train_op
 
@@ -228,12 +186,13 @@ def _activation_summary(x):
     return
 
 
-def inputs(num_epochs):
+def inputs():
     """ This function loads our raw inputs, processes them to a protobuffer that is then saved and
         loads the protobuffer into a batch of tensors """
 
     # First request what gender to train:
     gender = input('Please enter what Gender you would like to train: -> ')
+    age = input('Now enter what age group you would like to train: -> ')
 
     # To Do: Skip part 1 and 2 if the protobuff already exists
     if not os.path.isfile('data/boneageproto.tfrecords'):  # and not os.path.isfile('data/boneageloadict'):
@@ -253,16 +212,17 @@ def inputs(num_epochs):
             # Append the dictionary with the key: value pair of the basename (not full globname) and processed image
             images[os.path.splitext(os.path.basename(file_id))[0]] = raw
             i += 1
-            if i % 300 == 0:
+            if i % 100 == 0:
                 print('     %i Images Loaded at %s, generating sample...' % (i, raw.shape))  # Just to update us
 
-        label_dir = os.path.join(FLAGS.data_dir,
-                                 'handdictionary')  # The labels dict is saved under handdictionary binary
+            if i > 500: break
+
+        label_dir = os.path.join(FLAGS.data_dir, 'handdictionary')  # The labels dict
         labels = Input.read_labels(label_dir)  # Add the dictionary of labels we have
 
         # Part 2: Save the images and labels to protobuf -------------------------------
         print('------------------------------------Saving images to records...')
-        Input.img_protobuf(images, labels, 'bonageproto', gender=gender.upper())
+        Input.img_protobuf(images, labels, 'bonageproto', gender=gender.upper(), age=int(age))
 
     else:
         print('-------------------------Previously saved records found! Loading...')

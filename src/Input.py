@@ -62,7 +62,7 @@ def read_labels(filename):
     return labels
 
 
-def img_protobuf(images, labels, name, gender='F'):
+def img_protobuf(images, labels, name, gender='F', age='15'):
     """ Combines the images and labels given and saves them to a TFRecords protocol buffer
         Will call this function one time each to save a training, validation and test set.
         Combine the image[index] as an element in the nested dictionary
@@ -70,10 +70,7 @@ def img_protobuf(images, labels, name, gender='F'):
             images: A Dictionary of our source images
             labels: A 2D Dictionary with image id:{x,y,z} pairs """
 
-    # Next we need to store the original image dimensions for when we restore the protobuf binary to a usable form
-    rows = 256
-    columns = 256
-    examples = len(images)
+    das = 0
 
     filenames = os.path.join(records_file, name + '.tfrecords')  # Set the filenames for the protobuf
 
@@ -89,16 +86,30 @@ def img_protobuf(images, labels, name, gender='F'):
             counter += 1
             continue
 
+        elif age > 10:
+            if float(labels[index]['ChrAge']) < 10:
+                counter += 1
+                continue
+
+        elif age < 10:
+            if float(labels[index]['ChrAge']) >= 10:
+                counter += 1
+                continue
+
+        if das > 15: continue
+
+        das += 1
+
         # Create our dictionary of values to store: Added some dimensions values that may be useful later on
         data = {'data': images[index],
                 'label1': labels[index]['Reading1'], 'label2': labels[index]['Reading2'],
-                'height': rows, 'width': columns, 'examples': examples}
+                'age': labels[index]['ChrAge'], 'race': labels[index]['Race']}
 
         example = tf.train.Example(features=tf.train.Features(feature=create_feature_dict(data, index)))
         writer.write(example.SerializeToString())  # Converts example to serialized string and writes it in the protobuf
 
     writer.close()  # Close the file after writing
-    print('Skipped: %s non-gender matched images' % counter)
+    print('Skipped: %s non-gender and age matched images' % counter)
 
     return
 
@@ -148,9 +159,10 @@ def load_protobuf(num_epochs, input_name, return_dict=True):
     _, serialized_example = reader.read(filename_queue)  # Returns the next record (key:value) produced by the reader
 
     # Restore the feature dictionary to store the variables we will retrieve using the parse
-    loadname = os.path.join(records_file, 'boneageloadict')
-    with open(loadname, 'rb') as file_handle:
-        feature_dict = pickle.load(file_handle)
+
+    feature_dict = {'id': tf.FixedLenFeature([], tf.int64), 'data': tf.FixedLenFeature([], tf.string),
+                    'label1': tf.FixedLenFeature([], tf.string), 'label2': tf.FixedLenFeature([], tf.string),
+                    'age': tf.FixedLenFeature([], tf.string), 'race': tf.FixedLenFeature([], tf.string)}
 
     # Parses one protocol buffer file into the features dictionary which maps keys to tensors with the data
     features = tf.parse_single_example(serialized_example, features=feature_dict)
@@ -164,25 +176,27 @@ def load_protobuf(num_epochs, input_name, return_dict=True):
     id = tf.cast(features['id'], tf.float32)
     label1 = tf.string_to_number(features['label1'], tf.float32)
     label2 = tf.string_to_number(features['label2'], tf.float32)
+    age = tf.string_to_number(features['age'], tf.float32)
 
     # Apply image pre processing here:
-    image = tf.image.random_flip_left_right(image)  # First randomly flip left/right
-    image = tf.image.random_flip_up_down(image)  # Up/down flip
-    image = tf.image.random_brightness(image, max_delta=0.5)  # Apply random brightness
+    # image = tf.image.random_flip_left_right(image)  # First randomly flip left/right
+    # image = tf.image.random_flip_up_down(image)  # Up/down flip
+    # image = tf.image.random_brightness(image, max_delta=0.5)  # Apply random brightness
     image = tf.image.per_image_standardization(image=image)  # Subtract mean and div by variance
 
-    # Resize images
-    image = tf.image.resize_images(image, [320, 320])
-    image = tf.random_crop(image, [256, 256, 1])  # Random crop the image to a box 80% of the size
+    # # Resize images
+    # image = tf.image.resize_images(image, [320, 320])
+    # image = tf.random_crop(image, [256, 256, 1])  # Random crop the image to a box 80% of the size
+    image = tf.image.resize_images(image, [256, 256])
 
     # create float summary image
     tf.summary.image('Normalized Image', tf.reshape(image, shape=[1, 256, 256, 1]), max_outputs=1)
 
     # Return data as a dictionary by default, otherwise return it as just the raw sets
     if not return_dict:
-        return image, label1, label2, id
+        return image, label1, label2, id, age
     else:
-        final_data = {'image': image, 'label1': label1, 'label2': label2}
+        final_data = {'image': image, 'label1': label1, 'label2': label2, 'age': age}
         returned_dict = {}
         returned_dict['id'] = id
         for key, feature in final_data.items():
