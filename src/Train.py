@@ -19,13 +19,23 @@ FLAGS = tf.app.flags.FLAGS
 tf.app.flags.DEFINE_string('train_dir', 'training', """Directory to write event logs and save checkpoint files""")
 tf.app.flags.DEFINE_integer('max_steps', 500000, """Number of batches to run""")
 tf.app.flags.DEFINE_integer('num_epochs', 10000, """How many epochs to run""")
-tf.app.flags.DEFINE_integer('test_interval', 200, """How often to test the model during training""")
-tf.app.flags.DEFINE_integer('print_interval', 200, """How often to print a summary to console during training""")
-tf.app.flags.DEFINE_integer('checkpoint_steps', 1000, """How many steps to iterate before saving a checkpoint""")
+tf.app.flags.DEFINE_integer('test_interval', 5000, """How often to test the model during training""")
+tf.app.flags.DEFINE_integer('print_interval', 500, """How often to print a summary to console during training""")
+tf.app.flags.DEFINE_integer('checkpoint_steps', 10000, """How many steps to iterate before saving a checkpoint""")
 tf.app.flags.DEFINE_integer('summary_steps', 1000, """How many steps to iterate before writing a summary""")
 tf.app.flags.DEFINE_boolean('log_device_placement', False, """Yes or no""")
+tf.app.flags.DEFINE_integer('batch_size', 32, """Number of images to process in a batch.""")
+
+# Hyperparameters:
+# For the old girls run: lr = .001, dropout = 0.5, gamma = 0.001, moving decay = 0.999, beta: 0.9 and 0.999
+# Young girls run:l2 = 0.001, lr = 0.001, moving decay = 0.999, dropout = 1. beta: 0.9 and 0.999: 100% % 90k
 tf.app.flags.DEFINE_float('dropout_factor', 0.5, """ p value for the dropout layer""")
-tf.app.flags.DEFINE_float('l2_gamma', 0.01, """ The gamma value for regularization loss""")
+tf.app.flags.DEFINE_float('l2_gamma', 0.001, """ The gamma value for regularization loss""")
+tf.app.flags.DEFINE_float('learning_rate', 0.0004, """Initial learning rate""")
+tf.app.flags.DEFINE_float('moving_avg_decay', 0.999, """ The decay rate for the moving average tracker""")
+# Hyperparameters to control the exponential decay rate of the first and second order moments for Adam
+tf.app.flags.DEFINE_float('beta1', 0.9, """ The beta 1 value for the adam optimizer""")
+tf.app.flags.DEFINE_float('beta2', 0.999, """ The beta 1 value for the adam optimizer""")
 
 # Define a custom training class
 def train():
@@ -33,10 +43,8 @@ def train():
     The 'with' statement tells python to try and execute the following code, and utilize a custom defined __exit__
     function once it is done or it fails """
 
-    tf.reset_default_graph()  # Makes this the default graph where all ops will be added
-
-    # Get the tensor that keeps track of step in this graph or create one if not there
-    global_step = tf.contrib.framework.get_or_create_global_step()
+    # Makes this the default graph where all ops will be added
+    tf.reset_default_graph()
 
     # Get a dictionary of our images, id's, and labels here
     images = BonaAge.inputs()
@@ -52,13 +60,14 @@ def train():
     labels2 = tf.transpose(tf.multiply(avg_label, 19))
     MAE_loss = tf.reduce_mean(tf.abs(tf.subtract(predictions2, labels2)))
 
-    # Calculate the total loss, adding L2 regularization
+    # Calculate the objective function loss
     mse_loss = BonaAge.total_loss(logits, avg_label)
 
+    # Add in L2 Regularization
     loss = tf.add(mse_loss, l2loss, name='loss')
 
     # Build the backprop graph to train the model with one batch and update the parameters (Backward pass)
-    train_op = BonaAge.backward_pass(loss, global_step)
+    train_op = BonaAge.backward_pass(loss)
 
     # Merge the summaries
     all_summaries = tf.summary.merge_all()
@@ -96,22 +105,14 @@ def train():
                 predictions = predictions1.astype(np.float)
                 label = label1.astype(np.float)
 
-                right = 0.0
-
-                for i in range(0, predictions.size - 1):
-                    if abs(predictions[i] - label[i]) < 0.833:  # If difference is less than 10 m
-                        right += 1
-                    elif abs(predictions[i] - label[i]) < 1.667:  # 2 standard deviations
-                        right += 0.5
-
-                acc = (right / (predictions.size - 1)) * 100
+                acc = calculate_errors(predictions, label)
 
                 np.set_printoptions(precision=1)  # use numpy to print only the first sig fig
                 print('Eg. Predictions: Network(Real): %.1f (%.1f), %.1f (%.1f), %.1f (%.1f), %.1f (%.1f), '
-                      'MSE: %.4f, MAE: %.4f, Accuracy: %.2f %%' % (predictions[0],
-                                                                   label[0], predictions[1], label[1], predictions[2],
-                                                                   label[2], predictions[3],
-                                                                   label[3], loss1, mae, acc))
+                      'MSE: %.4f, MAE: %.2f Yrs, Accuracy: %.2f %%' % (predictions[0],
+                                                                       label[0], predictions[1], label[1], predictions[2],
+                                                                       label[2], predictions[3],
+                                                                       label[3], loss1, mae, acc))
 
                 # Run a session to retrieve our summaries
                 summary = mon_sess.run(all_summaries)
@@ -153,6 +154,81 @@ def train():
             # Wait for threads to finish before closing session
             coord.join(threads)
             mon_sess.close()
+
+
+def calculate_errors(predictions=[], label=[], Girls=True):
+    """
+    This function retreives the labels and predictions and then outputs the accuracy based on the actual
+    standard deviations from the atlas of bone ages. The prediction is considered "right" if it's within
+    two standard deviations
+    :param predictions:
+    :param labels:
+    :param girls: Whether we're using the female or male standard deviations
+    :return: Accurace : calculated as % of right/total
+    """
+
+    # First define our variables:
+    right = 0.0  # Number of correct predictions
+    total = predictions.size - 1  # Number of total predictions
+    std_dev = np.zeros_like(predictions, dtype='float32')  # The array that will hold our STD Deviations
+
+    # No apply the standard deviations TODO: Boys have different ranges lol
+    for i in range(0, total):
+        # Bunch of if statements assigning the STD for the patient's true age
+        if label[i] <= (3 / 12):
+            std_dev[i] = 0.72 / 12
+        elif label[i] <= (6 / 12):
+            std_dev[i] = 1.16 / 12
+        elif label[i] <= (9 / 12):
+            std_dev[i] = 1.36 / 12
+        elif label[i] <= (12 / 12):
+            std_dev[i] = 1.77 / 12
+        elif label[i] <= (18 / 12):
+            std_dev[i] = 3.49 / 12
+        elif label[i] <= (24 / 12):
+            std_dev[i] = 4.64 / 12
+        elif label[i] <= (30 / 12):
+            std_dev[i] = 5.37 / 12
+        elif label[i] <= 3:
+            std_dev[i] = 5.97 / 12
+        elif label[i] <= 3.5:
+            std_dev[i] = 7.48 / 12
+        elif label[i] <= 4:
+            std_dev[i] = 8.98 / 12
+        elif label[i] <= 4.5:
+            std_dev[i] = 10.73 / 12
+        elif label[i] <= 5:
+            std_dev[i] = 11.65 / 12
+        elif label[i] <= 6:
+            std_dev[i] = 10.23 / 12
+        elif label[i] <= 7:
+            std_dev[i] = 9.64 / 12
+        elif label[i] <= 8:
+            std_dev[i] = 10.23 / 12
+        elif label[i] <= 9:
+            std_dev[i] = 10.74 / 12
+        elif label[i] <= 10:
+            std_dev[i] = 11.73 / 12
+        elif label[i] <= 11:
+            std_dev[i] = 11.94 / 12
+        elif label[i] <= 12:
+            std_dev[i] = 10.24 / 12
+        elif label[i] <= 13:
+            std_dev[i] = 10.67 / 12
+        elif label[i] <= 14:
+            std_dev[i] = 11.3 / 12
+        elif label[i] <= 15:
+            std_dev[i] = 9.23 / 12
+        else:
+            std_dev[i] = 7.31 / 12
+
+        # Mark it right if we are within 2 std_devs
+        if abs(predictions[i] - label[i]) <= (std_dev[i] * 2):  # If difference is less than 10 m
+            right += 1
+
+    accuracy = (right / total) * 100  # Calculate the percent correct
+
+    return accuracy
 
 
 def main(argv=None):  # pylint: disable=unused-argument

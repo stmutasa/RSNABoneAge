@@ -23,15 +23,8 @@ import Input
 FLAGS = tf.app.flags.FLAGS
 
 # Define some of the immutable variables
-tf.app.flags.DEFINE_integer('batch_size', 16, """Number of images to process in a batch.""")
-tf.app.flags.DEFINE_float('learning_rate', 0.001, """Initial learning rate""")
 tf.app.flags.DEFINE_string('data_dir', 'data/raw/', """Path to the data directory.""")
 
-# Constants we will use if we decide to use decaying learning rate
-MOVING_AVERAGE_DECAY = 0.999  # The decay to use for the moving average. (RMSProp)
-NUM_EPOCHS_PER_DECAY = 2.0  # Epochs after which learning rate decays.
-LEARNING_RATE_DECAY_FACTOR = 1.0  # Learning rate decay factor.
-Num_Examples = 16
 
 TOWER_NAME = 'tower'  # If training on multiple GPU's, prefix all op names with tower_name
 
@@ -96,15 +89,17 @@ def forward_pass(images, keep_prob=1.0, phase_train1=True):
 
     # The linear layer
     with tf.variable_scope('linear2') as scope:
-        W = tf.Variable(np.random.randn(128, 1), name='Weights', dtype=tf.float32)
+        W = tf.get_variable('Weights', shape=[128, 1], initializer=tf.contrib.layers.xavier_initializer())
         b = tf.Variable(np.ones(FLAGS.batch_size), name='Bias', dtype=tf.float32)
         Logits = tf.add(tf.matmul(fc7, W), b, name=scope.name)
         Logits = tf.slice(Logits, [0, 0], [FLAGS.batch_size, 1])
         Logits = tf.transpose(Logits)
 
     # Calculate the L2 regularization penalty
-    L2_loss = FLAGS.l2_gamma * (tf.nn.l2_loss(conv1) + tf.nn.l2_loss(conv2) + tf.nn.l2_loss(conv3) +
-                                tf.nn.l2_loss(conv4) + tf.nn.l2_loss(conv5) + tf.nn.l2_loss(fc7) + tf.nn.l2_loss(W))
+    L2_loss = (tf.nn.l2_loss(conv1) + tf.nn.l2_loss(conv2) + tf.nn.l2_loss(conv3) +
+               tf.nn.l2_loss(conv4) + tf.nn.l2_loss(conv5) + tf.nn.l2_loss(fc7) + tf.nn.l2_loss(W))
+
+    L2_loss = tf.multiply(L2_loss, FLAGS.l2_gamma)
 
     # Add it to the collection
     tf.add_to_collection('losses', L2_loss)
@@ -150,7 +145,7 @@ def total_loss(logits, labels):
     return MSE_loss
 
 
-def backward_pass(total_loss, global_step1):
+def backward_pass(total_loss):
     """ This function performs our backward pass and updates our gradients
     Args:
         total_loss is the summed loss caculated above
@@ -158,18 +153,30 @@ def backward_pass(total_loss, global_step1):
     Returns:
         train_op: operation for training"""
 
+    # Get the tensor that keeps track of step in this graph or create one if not there
+    global_step = tf.contrib.framework.get_or_create_global_step()
+
     # Compute the gradients. Multiple alternate methods grayed out. So far Adam is winning by a mile
-    opt = tf.train.AdamOptimizer(learning_rate=FLAGS.learning_rate, beta1=0.9, beta2=0.999)
+    opt = tf.train.AdamOptimizer(learning_rate=FLAGS.learning_rate, beta1=FLAGS.beta1, beta2=FLAGS.beta2)
     # opt = tf.train.ProximalGradientDescentOptimizer(lr,l2_regularization_strength=FLAGS.l2_gamma)
     # opt = tf.train.GradientDescentOptimizer(lr)
 
     # Compute then apply the gradients
-    train_op = opt.minimize(total_loss, global_step1, name='train')
+    train_op = opt.minimize(total_loss, global_step, name='train')
 
     # Add histograms for the trainable variables. i.e. the collection of variables created with Trainable=True
     # These include the biases, the activation layers (nonlinearities) and weights
     for var in tf.trainable_variables():
         tf.summary.histogram(var.op.name, var)
+
+    # Maintain average weights to smooth out training
+    variable_averages = tf.train.ExponentialMovingAverage(FLAGS.moving_avg_decay, global_step)
+
+    # Applies the average to the variables in the trainable ops collection
+    variable_averages_op = variable_averages.apply(tf.trainable_variables())
+
+    with tf.control_dependencies([train_op, variable_averages_op]):  # Wait until we apply the gradients
+        dummy_op = tf.no_op(name='train')  # Does nothing. placeholder to control the execution of the graph
 
     return train_op
 
@@ -192,7 +199,7 @@ def inputs():
 
     # First request what gender to train:
     gender = input('Please enter what Gender you would like to train: -> ')
-    age = input('Now enter what age group you would like to train: -> ')
+    age = input('Now enter what age group you would like to train ( Above or below 6) : -> ')
 
     # To Do: Skip part 1 and 2 if the protobuff already exists
     if not os.path.isfile('data/boneageproto.tfrecords'):  # and not os.path.isfile('data/boneageloadict'):
@@ -215,13 +222,13 @@ def inputs():
             if i % 100 == 0:
                 print('     %i Images Loaded at %s, generating sample...' % (i, raw.shape))  # Just to update us
 
-            if i > 500: break
+                # if i > 500: break FOR TESTING OVERFIT
 
         label_dir = os.path.join(FLAGS.data_dir, 'handdictionary')  # The labels dict
         labels = Input.read_labels(label_dir)  # Add the dictionary of labels we have
 
         # Part 2: Save the images and labels to protobuf -------------------------------
-        print('------------------------------------Saving images to records...')
+        print('------%s Images successfully loaded------------------Saving images to records...' % i)
         Input.img_protobuf(images, labels, 'bonageproto', gender=gender.upper(), age=int(age))
 
     else:
