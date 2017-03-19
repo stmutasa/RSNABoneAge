@@ -15,6 +15,11 @@ import matplotlib.image as mpimg
 import pickle  # Module for serializing data and saving it to disk for use in another script
 import glob
 
+from math import radians
+from random import randint
+
+FLAGS = tf.app.flags.FLAGS
+
 # Define the dimensions of our input data
 image_width = 256,  # """Width of the images.""")
 image_height = 256,  # """Height of the images.""")
@@ -86,13 +91,13 @@ def img_protobuf(images, labels, name, gender='F', age='15'):
             counter += 1
             continue
 
-        elif age > 6:
-            if float(labels[index]['ChrAge']) <= 6:
+        elif age > 10:
+            if float(labels[index]['ChrAge']) <= 10:
                 counter += 1
                 continue
 
-        elif age < 10:
-            if float(labels[index]['ChrAge']) >= 6:
+        elif age <= 10:
+            if float(labels[index]['ChrAge']) >= 10:
                 counter += 1
                 continue
 
@@ -182,6 +187,9 @@ def load_protobuf(num_epochs, input_name, return_dict=True):
     image = tf.image.random_flip_left_right(image)  # First randomly flip left/right
     image = tf.image.random_flip_up_down(image)  # Up/down flip
     image = tf.image.random_brightness(image, max_delta=0.5)  # Apply random brightness
+
+    # For random rotation, generate a random angle and apply the rotation
+    image = tf.contrib.image.rotate(image, radians(float(randint(0, 360))))
     image = tf.image.per_image_standardization(image=image)  # Subtract mean and div by variance
 
     # # Resize images

@@ -41,16 +41,16 @@ def forward_pass(images, keep_prob=1.0, phase_train1=True):
     phase_train = tf.Variable(phase_train1, dtype=tf.bool, trainable=False)
 
     # The first convolutional layer
-    conv1 = convolution('Conv1', images, 1, 7, 96, phase_train=phase_train)
+    conv1 = convolution('Conv1', images, 7, 96, phase_train=phase_train)
 
     # The second convolutional layer
-    conv2 = convolution('Conv2', conv1, 96, 5, 256, phase_train=phase_train)
+    conv2 = convolution('Conv2', conv1, 5, 2048, phase_train=phase_train)
 
     # The third convolutional layer
-    conv3 = convolution('Conv3', conv2, 256, 3, 128, phase_train=phase_train)
+    conv3 = convolution('Conv3', conv2, 3, 1024, phase_train=phase_train)
 
     # The 4th convolutional layer
-    conv4 = convolution('Conv4', conv3, 128, 3, 128, phase_train=phase_train)
+    conv4 = convolution('Conv4', conv3, 3, 1024, phase_train=phase_train)
 
     # # To Do: Insert the affine transform layer here: Output of conv4 is [batch, 14,14,128]
     # with tf.variable_scope('Transformer') as scope:
@@ -76,20 +76,23 @@ def forward_pass(images, keep_prob=1.0, phase_train1=True):
 
     # The 5th convolutional layer
     # conv5 = convolution('Conv5', trans, 1, 3, 128, phase_train=phase_train)
-    conv5 = convolution('Conv5', conv4, 128, 3, 128, phase_train=phase_train)
+    conv5 = convolution('Conv5', conv4, 3, 1024, phase_train=phase_train)
+
+    # One more conv
+    # conv6 = convolution('Conv6', conv5, 128, 3, 256, phase_train=phase_train)
 
     # The Fc7 layer
     with tf.variable_scope('linear1') as scope:
         reshape = tf.reshape(conv5, [FLAGS.batch_size, -1])  # Move everything to n by b matrix for a single matmul
         dim = reshape.get_shape()[1].value  # Get columns for the matrix multiplication
-        weights = tf.get_variable('weights', shape=[dim, 128], initializer=tf.contrib.layers.xavier_initializer())
+        weights = tf.get_variable('weights', shape=[dim, 1024], initializer=tf.contrib.layers.xavier_initializer())
         fc7 = tf.nn.relu(tf.matmul(reshape, weights), name=scope.name)  # returns mat of size batch x 512
         fc7 = tf.nn.dropout(fc7, keep_prob=keep_prob)  # Apply dropout here
         _activation_summary(fc7)
 
     # The linear layer
     with tf.variable_scope('linear2') as scope:
-        W = tf.get_variable('Weights', shape=[128, 1], initializer=tf.contrib.layers.xavier_initializer())
+        W = tf.get_variable('Weights', shape=[1024, 1], initializer=tf.contrib.layers.xavier_initializer())
         b = tf.Variable(np.ones(FLAGS.batch_size), name='Bias', dtype=tf.float32)
         Logits = tf.add(tf.matmul(fc7, W), b, name=scope.name)
         Logits = tf.slice(Logits, [0, 0], [FLAGS.batch_size, 1])
@@ -110,17 +113,42 @@ def forward_pass(images, keep_prob=1.0, phase_train1=True):
     return Logits, L2_loss  # Return whatever the name of the final logits variable is
 
 
-def convolution(scope, X, C, F, K, S=2, padding='VALID', phase_train=None):
+def convolution(scope, X, F, K, S=2, padding='VALID', phase_train=None):
+    """
+    This is a wrapper for convolutions
+    :param scope:
+    :param X:
+    :param C:
+    :param F:
+    :param K:
+    :param S:
+    :param padding:
+    :param phase_train:
+    :return:
+    """
+
+    # Set channel size based on input depth
+    C = X.get_shape().as_list()[3]
+
+    # Set the scope
     with tf.variable_scope(scope) as scope:
-        kernel = tf.get_variable('Weights', shape=[F, F, C, K], initializer=tf.contrib.layers.xavier_initializer())
+        # Define the Kernel. Can use Xavier init: contrib.layers.xavier_initializer())
+        kernel = tf.get_variable('Weights', shape=[F, F, C, K],
+                                 initializer=tf.truncated_normal_initializer(stddev=5e-2))
+
+        # Perform the actual convolution
         conv = tf.nn.conv2d(X, kernel, [1, S, S, 1], padding=padding)  # Create a 2D tensor with BATCH_SIZE rows
 
         # norm = tf.cond(phase_train,
         #                lambda: tf.contrib.layers.batch_norm(conv, decay=0.999, is_training=True, reuse=None),
         #                lambda: tf.contrib.layers.batch_norm(conv, is_training=False, reuse=True, scope='norm'))
 
-        conv = tf.nn.relu(conv, name=scope.name)  # Use ELU to prevent sparsity.
-        _activation_summary(conv)  # Create a histogram/scalar summary of the conv1 layer
+        # Relu activation
+        conv = tf.nn.relu(conv, name=scope.name)
+
+        # Create a histogram/scalar summary of the conv1 layer
+        _activation_summary(conv)
+
         return conv
 
 
@@ -156,8 +184,14 @@ def backward_pass(total_loss):
     # Get the tensor that keeps track of step in this graph or create one if not there
     global_step = tf.contrib.framework.get_or_create_global_step()
 
+    # Use learning rate decay
+
+    lr = tf.train.exponential_decay(FLAGS.learning_rate, global_step, FLAGS.lr_steps, FLAGS.lr_decay, staircase=True)
+    tf.summary.scalar('learning_rate', lr)  # Output a scalar sumamry to TensorBoard
+
     # Compute the gradients. Multiple alternate methods grayed out. So far Adam is winning by a mile
-    opt = tf.train.AdamOptimizer(learning_rate=FLAGS.learning_rate, beta1=FLAGS.beta1, beta2=FLAGS.beta2)
+    opt = tf.train.AdamOptimizer(learning_rate=lr, beta1=FLAGS.beta1, beta2=FLAGS.beta2)
+    # opt = tf.train.MomentumOptimizer(lr, FLAGS.momentum, use_nesterov=FLAGS.use_nesterov)
     # opt = tf.train.ProximalGradientDescentOptimizer(lr,l2_regularization_strength=FLAGS.l2_gamma)
     # opt = tf.train.GradientDescentOptimizer(lr)
 
@@ -199,7 +233,7 @@ def inputs():
 
     # First request what gender to train:
     gender = input('Please enter what Gender you would like to train: -> ')
-    age = input('Now enter what age group you would like to train ( Above or below 6) : -> ')
+    age = input('Now enter what age group you would like to train ( Above or below 10) : -> ')
 
     # To Do: Skip part 1 and 2 if the protobuff already exists
     if not os.path.isfile('data/boneageproto.tfrecords'):  # and not os.path.isfile('data/boneageloadict'):
