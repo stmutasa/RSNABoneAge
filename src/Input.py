@@ -77,20 +77,31 @@ def img_protobuf(images, labels, name, gender='F', age='15'):
 
     das = 0
 
-    filenames = os.path.join(records_file, name + '.tfrecords')  # Set the filenames for the protobuf
+    # Define the filenames for the training and validation sets
+    filenames = os.path.join(records_file, name + 'train' + '.tfrecords')
+    val_filenames = os.path.join(records_file, name + 'valid' + '.tfrecords')
+
 
     # Define the class we will use to write the records to the .tfrecords protobuf. the init opens the file for writing
     writer = tf.python_io.TFRecordWriter(filenames)
+    val_writer = tf.python_io.TFRecordWriter(val_filenames)
     counter = 0  # for testing
+    val_size = 0
+
     # Loop through each example and append the protobuf with the specified features
     for index, feature in labels.items():
-        if index not in images: continue  # Since we deleted some images, some of the labels won't exist
+
+        # First skip some images...
+
+        # If the images don't exist
+        if index not in images: continue
 
         # Skip the gender not specified by the user
         if labels[index]['Gender'] != gender:
             counter += 1
             continue
 
+        # If the age doesn't fit
         elif age > 10:
             if float(labels[index]['ChrAge']) <= 10:
                 counter += 1
@@ -103,6 +114,7 @@ def img_protobuf(images, labels, name, gender='F', age='15'):
 
         # if das > 15: continue FOR TESTING OVERFIT
 
+        # This image made it in increment the loaded image counter
         das += 1
 
         # Create our dictionary of values to store: Added some dimensions values that may be useful later on
@@ -111,12 +123,20 @@ def img_protobuf(images, labels, name, gender='F', age='15'):
                 'age': labels[index]['ChrAge'], 'race': labels[index]['Race']}
 
         example = tf.train.Example(features=tf.train.Features(feature=create_feature_dict(data, index)))
-        writer.write(example.SerializeToString())  # Converts example to serialized string and writes it in the protobuf
+
+        # Save every x images to the validation set
+        if das % 5 == 0:
+            val_writer.write(example.SerializeToString())
+            val_size += 1
+        else:
+            writer.write(
+                example.SerializeToString())  # Converts example to serialized string and writes it in the protobuf
 
     writer.close()  # Close the file after writing
-    print('Skipped: %s non-gender and age matched images' % counter)
+    val_writer.close()
+    print('Skipped: %s non-gender and age matched images, Validation size: %s' % (counter, val_size))
 
-    return
+    return val_size
 
 
 def create_feature_dict(data_to_write={}, id=1, restore=False):
@@ -146,7 +166,7 @@ def create_feature_dict(data_to_write={}, id=1, restore=False):
         return feature_dict_restore
 
 
-def load_protobuf(num_epochs, input_name, return_dict=True):
+def load_protobuf(input_name, return_dict=True):
     """ This function loads the previously saved protocol buffer and converts it's entries in to a Tensor for use
         in Training. For now, define the variables and dictionaries here locally and define Peters params[] class later
         Args
@@ -157,8 +177,10 @@ def load_protobuf(num_epochs, input_name, return_dict=True):
     # Outputs strings (filenames) to a queue for an input pipeline can do this in train and pass to this function
     # Will generate a random shuffle of the string tensors each epoch
     filedir = os.path.join(records_file, input_name)  # filenames for the protobuf
-    filenames = glob.glob(filedir + '*.tfrecords')
-    filename_queue = tf.train.string_input_producer(filenames, num_epochs=num_epochs)
+
+    filenames = glob.glob(filedir + 'train' + '*.tfrecords')
+
+    filename_queue = tf.train.string_input_producer(filenames, num_epochs=None)
 
     reader = tf.TFRecordReader()  # Instantializes a TFRecordReader which outputs records from a TFRecords file
     _, serialized_example = reader.read(filename_queue)  # Returns the next record (key:value) produced by the reader
@@ -193,7 +215,7 @@ def load_protobuf(num_epochs, input_name, return_dict=True):
     image = tf.image.per_image_standardization(image=image)  # Subtract mean and div by variance
 
     # # Resize images
-    image = tf.image.resize_images(image, [320, 320])
+    image = tf.image.resize_images(image, [284, 284])
     image = tf.random_crop(image, [256, 256, 1])  # Random crop the image to a box 80% of the size
     # image = tf.image.resize_images(image, [256, 256])
 
@@ -210,6 +232,56 @@ def load_protobuf(num_epochs, input_name, return_dict=True):
         for key, feature in final_data.items():
             returned_dict[key] = feature
         return returned_dict
+
+
+def load_validation_set(input_name):
+    """
+    Same as load protobuf() but loads the validation set
+    :param input_name:
+    :return:
+    """
+
+    # Filenames for the protobuf
+    filedir = os.path.join(records_file, input_name)  # filenames for the protobuf
+    filenames = glob.glob(filedir + 'valid' + '*.tfrecords')
+    filename_queue = tf.train.string_input_producer(filenames, shuffle=False)
+    val_reader = tf.TFRecordReader()  # Instantializes a TFRecordReader which outputs records from a TFRecords file
+    _, serialized_example = val_reader.read(
+        filename_queue)  # Returns the next record (key:value) produced by the reader
+
+    # Restore the feature dictionary to store the variables we will retrieve using the parse
+
+    feature_dict = {'id': tf.FixedLenFeature([], tf.int64), 'data': tf.FixedLenFeature([], tf.string),
+                    'label1': tf.FixedLenFeature([], tf.string), 'label2': tf.FixedLenFeature([], tf.string),
+                    'age': tf.FixedLenFeature([], tf.string), 'race': tf.FixedLenFeature([], tf.string)}
+
+    # Parses one protocol buffer file into the features dictionary which maps keys to tensors with the data
+    features = tf.parse_single_example(serialized_example, features=feature_dict)
+
+    # Change the raw image data to 8 bit integers first
+    image = tf.decode_raw(features['data'], tf.uint8)  # Set this examples image to a blank tensor with integer data
+    image = tf.reshape(image, shape=[512, 512, 1])  # Set the dimensions of the image ( must equal input dims here)
+
+    # Cast all our data to 32 bit floating point units. Cannot convert string to number unless you use that function
+    image = tf.cast(image, tf.float32)
+    id = tf.cast(features['id'], tf.float32)
+    label1 = tf.string_to_number(features['label1'], tf.float32)
+    label2 = tf.string_to_number(features['label2'], tf.float32)
+    age = tf.string_to_number(features['age'], tf.float32)
+
+    # Apply image pre processing here:
+    image = tf.image.per_image_standardization(image=image)  # Subtract mean and div by variance
+    # # Resize images
+    image = tf.image.resize_images(image, [256, 256])
+
+    # Return data as a dictionary by default, otherwise return it as just the raw sets
+    final_data = {'image': image, 'label1': label1, 'label2': label2, 'age': age}
+    returned_dict = {}
+    returned_dict['id'] = id
+    for key, feature in final_data.items():
+        returned_dict[key] = feature
+
+    return returned_dict
 
 
 def randomize_batches(image_dict, batch_size):
@@ -233,5 +305,28 @@ def randomize_batches(image_dict, batch_size):
     # Recreate the batched data as a dictionary with the new batch size
     for key, shuffle in zip(keys, shuffled): batch_dict[key] = shuffle
 
+
+    return batch_dict
+
+
+def val_batches(image_dict, batch_size):
+    """
+    Same as above but for the validation set
+    :param image_dict:
+    :param batch_size:
+    :return:
+    """
+
+    min_dq = 16  # Min elements to queue after a dequeue to ensure good mixing
+    capacity = min_dq + 3 * batch_size  # max number of elements in the queue
+    keys, tensors = zip(*image_dict.items())  # Create zip object
+
+    # This function creates batches by randomly shuffling the input tensors. returns a dict of shuffled tensors
+    shuffled = tf.train.batch(tensors, batch_size=batch_size, capacity=capacity)
+
+    batch_dict = {}  # Dictionary to store our shuffled examples
+
+    # Recreate the batched data as a dictionary with the new batch size
+    for key, shuffle in zip(keys, shuffled): batch_dict[key] = shuffle
 
     return batch_dict

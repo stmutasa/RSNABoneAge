@@ -29,7 +29,7 @@ tf.app.flags.DEFINE_string('data_dir', 'data/raw/', """Path to the data director
 TOWER_NAME = 'tower'  # If training on multiple GPU's, prefix all op names with tower_name
 
 
-def forward_pass(images, keep_prob=1.0, phase_train1=True):
+def forward_pass(images, phase_train=True, bts=0):
     """ This function builds the network architecture and performs the forward pass
         Args: Images = our input dictionary
         Returns: Logits (log odds units)
@@ -37,20 +37,23 @@ def forward_pass(images, keep_prob=1.0, phase_train1=True):
         scope defined by the block of code under variable_scope. This allows us to reuse variables in each block"""
     # normal kernel sizes: 96, 2048, 1024, 1024, 1024, 1024, 512
 
-    # Set phase train to true if this is a training forward pass. Change the python bool to a tensorflow bool
-    phase_train = tf.Variable(phase_train1, dtype=tf.bool, trainable=False)
+    # Adjust the batch size for training versus testing
+    if bts:
+        batch_size = bts
+    else:
+        batch_size = FLAGS.batch_size
 
     # The first convolutional layer
-    conv1 = convolution('Conv1', images, 7, 96, phase_train=phase_train)
+    conv1 = convolution('Conv1', images, 7, 64, phase_train=phase_train)
 
     # The second convolutional layer
-    conv2 = convolution('Conv2', conv1, 5, 2048, phase_train=phase_train)
+    conv2 = convolution('Conv2', conv1, 5, 256, phase_train=phase_train)
 
     # The third convolutional layer
-    conv3 = convolution('Conv3', conv2, 3, 1024, phase_train=phase_train)
+    conv3 = convolution('Conv3', conv2, 3, 128, phase_train=phase_train)
 
     # The 4th convolutional layer
-    conv4 = convolution('Conv4', conv3, 3, 1024, phase_train=phase_train)
+    conv4 = convolution('Conv4', conv3, 3, 128, phase_train=phase_train)
 
     # # To Do: Insert the affine transform layer here: Output of conv4 is [batch, 14,14,128]
     # with tf.variable_scope('Transformer') as scope:
@@ -76,26 +79,26 @@ def forward_pass(images, keep_prob=1.0, phase_train1=True):
 
     # The 5th convolutional layer
     # conv5 = convolution('Conv5', trans, 1, 3, 128, phase_train=phase_train)
-    conv5 = convolution('Conv5', conv4, 3, 1024, phase_train=phase_train)
+    conv5 = convolution('Conv5', conv4, 3, 128, phase_train=phase_train)
 
     # One more conv
     # conv6 = convolution('Conv6', conv5, 128, 3, 256, phase_train=phase_train)
 
     # The Fc7 layer
     with tf.variable_scope('linear1') as scope:
-        reshape = tf.reshape(conv5, [FLAGS.batch_size, -1])  # Move everything to n by b matrix for a single matmul
+        reshape = tf.reshape(conv5, [batch_size, -1])  # Move everything to n by b matrix for a single matmul
         dim = reshape.get_shape()[1].value  # Get columns for the matrix multiplication
-        weights = tf.get_variable('weights', shape=[dim, 1024], initializer=tf.contrib.layers.xavier_initializer())
+        weights = tf.get_variable('weights', shape=[dim, 128], initializer=tf.truncated_normal_initializer(stddev=5e-2))
         fc7 = tf.nn.relu(tf.matmul(reshape, weights), name=scope.name)  # returns mat of size batch x 512
-        fc7 = tf.nn.dropout(fc7, keep_prob=keep_prob)  # Apply dropout here
+        fc7 = tf.nn.dropout(fc7, keep_prob=FLAGS.dropout_factor)  # Apply dropout here
         _activation_summary(fc7)
 
     # The linear layer
     with tf.variable_scope('linear2') as scope:
-        W = tf.get_variable('Weights', shape=[1024, 1], initializer=tf.contrib.layers.xavier_initializer())
-        b = tf.Variable(np.ones(FLAGS.batch_size), name='Bias', dtype=tf.float32)
+        W = tf.get_variable('Weights', shape=[128, 1], initializer=tf.truncated_normal_initializer(stddev=5e-2))
+        b = tf.Variable(np.ones(batch_size), name='Bias', dtype=tf.float32)
         Logits = tf.add(tf.matmul(fc7, W), b, name=scope.name)
-        Logits = tf.slice(Logits, [0, 0], [FLAGS.batch_size, 1])
+        Logits = tf.slice(Logits, [0, 0], [batch_size, 1])
         Logits = tf.transpose(Logits)
 
     # Calculate the L2 regularization penalty
@@ -195,8 +198,14 @@ def backward_pass(total_loss):
     # opt = tf.train.ProximalGradientDescentOptimizer(lr,l2_regularization_strength=FLAGS.l2_gamma)
     # opt = tf.train.GradientDescentOptimizer(lr)
 
-    # Compute then apply the gradients
-    train_op = opt.minimize(total_loss, global_step, name='train')
+    # Compute the gradients
+    gradients = opt.compute_gradients(total_loss)
+
+    # clip the gradients
+    clipped_gradients = [(tf.clip_by_value(grad, -1., 1.), var) for grad, var in gradients]
+
+    # Apply the gradients
+    train_op = opt.apply_gradients(clipped_gradients, global_step, name='train')
 
     # Add histograms for the trainable variables. i.e. the collection of variables created with Trainable=True
     # These include the biases, the activation layers (nonlinearities) and weights
@@ -227,16 +236,12 @@ def _activation_summary(x):
     return
 
 
-def inputs():
+def inputs(skip=False):
     """ This function loads our raw inputs, processes them to a protobuffer that is then saved and
         loads the protobuffer into a batch of tensors """
 
-    # First request what gender to train:
-    gender = input('Please enter what Gender you would like to train: -> ')
-    age = input('Now enter what age group you would like to train ( Above or below 10) : -> ')
-
     # To Do: Skip part 1 and 2 if the protobuff already exists
-    if not os.path.isfile('data/boneageproto.tfrecords'):  # and not os.path.isfile('data/boneageloadict'):
+    if not skip:
 
         # Part 1: Load the raw images and labels dictionary ---------------------------
         print('----------------------No existing records -- Loading Raw Data...')
@@ -245,10 +250,15 @@ def inputs():
         # First load the raw data using the handy glob library
         globs = glob.glob(FLAGS.data_dir + '*.jpg')  # Returns a list of filenames
 
+        # First request what gender to train:
+        gender = input('Please enter what Gender you would like to train: -> ')
+        age = input('Now enter what age group you would like to train ( Above or below 10) : -> ')
+
         i = 0
         for file_id in globs:  # Loop through every jpeg in the data directory
 
-            raw = Input.read_image(file_id)  # First read the image into a unit8 numpy array named raw
+            # First read the image into a unit8 numpy array named raw
+            raw = Input.read_image(file_id)
 
             # Append the dictionary with the key: value pair of the basename (not full globname) and processed image
             images[os.path.splitext(os.path.basename(file_id))[0]] = raw
@@ -263,17 +273,19 @@ def inputs():
 
         # Part 2: Save the images and labels to protobuf -------------------------------
         print('------%s Images successfully loaded------------------Saving images to records...' % i)
-        Input.img_protobuf(images, labels, 'bonageproto', gender=gender.upper(), age=int(age))
+        val_size = Input.img_protobuf(images, labels, 'bonageproto', gender=gender.upper(), age=int(age))
 
     else:
         print('-------------------------Previously saved records found! Loading...')
 
     # Part 3: Load the protobuff  -----------------------------
     print('----------------------------------------Loading Protobuff...')
-    data = Input.load_protobuf(None, 'bonageproto', True)
+    data = Input.load_protobuf('bonageproto', True)
+    validation = Input.load_validation_set('bonageproto')
 
     # Part 4: Create randomized batches
     print('----------------------------------Creating and randomizing batches...')
     data = Input.randomize_batches(data, FLAGS.batch_size)
+    validation = Input.val_batches(validation, 51)
 
-    return data
+    return data, validation, 51
