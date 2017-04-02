@@ -14,12 +14,12 @@ _author_ = 'Simi'
 FLAGS = tf.app.flags.FLAGS
 
 # Define some of the immutable variables
-# Train and validation set sizes: YG: 206/51
+# Train and validation set sizes: YG: 206/51, OG: 340/85
 tf.app.flags.DEFINE_string('train_dir', 'training/', """Directory to write event logs and save checkpoint files""")
 tf.app.flags.DEFINE_integer('num_epochs', 1, """Number of epochs to run""")
-tf.app.flags.DEFINE_integer('epoch_size', 51, """How many images were loaded""")
+tf.app.flags.DEFINE_integer('epoch_size', 85, """How many images were loaded""")
 tf.app.flags.DEFINE_integer('print_interval', 1, """How often to print a summary to console during training""")
-tf.app.flags.DEFINE_integer('batch_size', 4, """Number of images to process in a batch.""")
+tf.app.flags.DEFINE_integer('batch_size', 5, """Number of images to process in a batch.""")
 
 # Hyperparameters:
 tf.app.flags.DEFINE_float('dropout_factor', 0.5, """ p value for the dropout layer""")

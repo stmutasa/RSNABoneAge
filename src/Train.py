@@ -17,13 +17,13 @@ FLAGS = tf.app.flags.FLAGS
 
 # Define some of the immutable variables
 tf.app.flags.DEFINE_string('train_dir', 'training/', """Directory to write event logs and save checkpoint files""")
-tf.app.flags.DEFINE_integer('num_epochs', 500, """Number of epochs to run""")
-# Young girls = 206 (51),
-tf.app.flags.DEFINE_integer('epoch_size', 206, """How many images were loaded""")
+tf.app.flags.DEFINE_integer('num_epochs', 150, """Number of epochs to run""")
+# Young girls = 206 (51), OG: 340/85
+tf.app.flags.DEFINE_integer('epoch_size', 340, """How many images were loaded""")
 tf.app.flags.DEFINE_integer('test_interval', 650, """How often to test the model during training""")
-tf.app.flags.DEFINE_integer('print_interval', 130, """How often to print a summary to console during training""")
-tf.app.flags.DEFINE_integer('checkpoint_steps', 4000, """How many STEPS to wait before saving a checkpoint""")
-tf.app.flags.DEFINE_integer('batch_size', 4, """Number of images to process in a batch.""")
+tf.app.flags.DEFINE_integer('print_interval', 150, """How often to print a summary to console during training""")
+tf.app.flags.DEFINE_integer('checkpoint_steps', 1000, """How many STEPS to wait before saving a checkpoint""")
+tf.app.flags.DEFINE_integer('batch_size', 5, """Number of images to process in a batch.""")
 
 # Hyperparameters:
 # For the old girls run: lr = .001, dropout = 0.5, gamma = 0.001, moving decay = 0.999, lr decay: 0.95, steps = 130
@@ -89,7 +89,7 @@ def train():
         # ckpt = tf.train.get_checkpoint_state(FLAGS.train_dir)
 
         # Initialize the saver
-        saver = tf.train.Saver()
+        saver = tf.train.Saver(max_to_keep=2)
 
         # Initialize the restorer
         # restorer = tf.train.import_meta_graph('training/Checkpoint.ckpt.meta')
@@ -115,9 +115,6 @@ def train():
             # Set the max step count
             max_steps = (FLAGS.epoch_size / FLAGS.batch_size) * FLAGS.num_epochs
 
-            # Define the checkpoint file:
-            checkpoint_file = os.path.join(FLAGS.train_dir, 'Checkpoint.ckpt')
-
             try:
                 while step <= max_steps:
                     start_time = time.time()  # Start the timer for this iteration
@@ -127,8 +124,17 @@ def train():
 
                     # Put if statements here for things you will do every x amount of steps
                     if step % FLAGS.checkpoint_steps == 0:
+
                         # Save the checkpoint
                         print(" ---------------- SAVING CHECKPOINT ------------------")
+
+                        # Define the filename
+                        file = ('Checkpoint%s' % step)
+
+                        # Define the checkpoint file:
+                        checkpoint_file = os.path.join(FLAGS.train_dir, file)
+
+                        # Save the checkpoint
                         saver.save(mon_sess, checkpoint_file)
 
                     if step % FLAGS.print_interval == 0:  # This statement will print loss, step and other stuff
@@ -152,7 +158,7 @@ def train():
 
                 # Save the final checkpoint
                 print(" ---------------- SAVING FINAL CHECKPOINT ------------------ ")
-                saver.save(mon_sess, checkpoint_file)
+                saver.save(mon_sess, 'training/Checkpoint.ckpt')
 
                 # Stop threads when done
                 coord.request_stop()

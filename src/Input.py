@@ -243,7 +243,7 @@ def load_validation_set(input_name):
 
     # Filenames for the protobuf
     filedir = os.path.join(records_file, input_name)  # filenames for the protobuf
-    filenames = glob.glob(filedir + 'valid' + '*.tfrecords')
+    filenames = glob.glob(filedir + 'test' + '*.tfrecords')
     filename_queue = tf.train.string_input_producer(filenames, shuffle=False)
     val_reader = tf.TFRecordReader()  # Instantializes a TFRecordReader which outputs records from a TFRecords file
     _, serialized_example = val_reader.read(
