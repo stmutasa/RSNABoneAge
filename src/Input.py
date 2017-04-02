@@ -271,6 +271,7 @@ def load_validation_set(input_name):
 
     # Apply image pre processing here:
     image = tf.image.per_image_standardization(image=image)  # Subtract mean and div by variance
+
     # # Resize images
     image = tf.image.resize_images(image, [256, 256])
 

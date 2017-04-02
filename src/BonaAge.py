@@ -81,16 +81,13 @@ def forward_pass(images, phase_train=True, bts=0):
     # conv5 = convolution('Conv5', trans, 1, 3, 128, phase_train=phase_train)
     conv5 = convolution('Conv5', conv4, 3, 128, phase_train=phase_train)
 
-    # One more conv
-    # conv6 = convolution('Conv6', conv5, 128, 3, 256, phase_train=phase_train)
-
     # The Fc7 layer
     with tf.variable_scope('linear1') as scope:
         reshape = tf.reshape(conv5, [batch_size, -1])  # Move everything to n by b matrix for a single matmul
         dim = reshape.get_shape()[1].value  # Get columns for the matrix multiplication
         weights = tf.get_variable('weights', shape=[dim, 128], initializer=tf.truncated_normal_initializer(stddev=5e-2))
         fc7 = tf.nn.relu(tf.matmul(reshape, weights), name=scope.name)  # returns mat of size batch x 512
-        fc7 = tf.nn.dropout(fc7, keep_prob=FLAGS.dropout_factor)  # Apply dropout here
+        if phase_train: fc7 = tf.nn.dropout(fc7, keep_prob=FLAGS.dropout_factor)  # Apply dropout here
         _activation_summary(fc7)
 
     # The linear layer

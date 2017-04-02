@@ -165,9 +165,6 @@ def train():
 
 
 def main(argv=None):  # pylint: disable=unused-argument
-    # if tf.gfile.Exists(FLAGS.train_dir):
-    #     tf.gfile.DeleteRecursively(FLAGS.train_dir)
-    # tf.gfile.MakeDirs(FLAGS.train_dir)
     train()
 
 if __name__ == '__main__':
