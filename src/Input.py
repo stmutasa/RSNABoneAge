@@ -79,7 +79,7 @@ def img_protobuf(images, labels, name, gender='F', age='15'):
 
     # Define the filenames for the training and validation sets
     filenames = os.path.join(records_file, name + 'train' + '.tfrecords')
-    val_filenames = os.path.join(records_file, name + 'valid' + '.tfrecords')
+    val_filenames = os.path.join(records_file, name + 'test' + '.tfrecords')
 
 
     # Define the class we will use to write the records to the .tfrecords protobuf. the init opens the file for writing

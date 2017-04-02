@@ -1,11 +1,8 @@
 """ Training the network on a single GPU """
 
-from __future__ import absolute_import      # import multi line and Absolute/Relative
-from __future__ import division             # change the division operator to output float if dividing two integers
-from __future__ import print_function       # use the print function from python 3
-
-import os
-import time                                 # to retreive current time
+from __future__ import absolute_import  # import multi line and Absolute/Relative
+from __future__ import division  # change the division operator to output float if dividing two integers
+from __future__ import print_function  # use the print function from python 3
 
 import BonaAge
 import tensorflow as tf
@@ -17,12 +14,12 @@ FLAGS = tf.app.flags.FLAGS
 
 # Define some of the immutable variables
 tf.app.flags.DEFINE_string('train_dir', 'training/', """Directory to write event logs and save checkpoint files""")
-tf.app.flags.DEFINE_integer('num_epochs', 500, """Number of epochs to run""")
+tf.app.flags.DEFINE_integer('num_epochs', 1, """Number of epochs to run""")
 # Young girls = 206 (51),
-tf.app.flags.DEFINE_integer('epoch_size', 206, """How many images were loaded""")
-tf.app.flags.DEFINE_integer('test_interval', 650, """How often to test the model during training""")
-tf.app.flags.DEFINE_integer('print_interval', 130, """How often to print a summary to console during training""")
-tf.app.flags.DEFINE_integer('checkpoint_steps', 4000, """How many STEPS to wait before saving a checkpoint""")
+tf.app.flags.DEFINE_integer('epoch_size', 51, """How many images were loaded""")
+tf.app.flags.DEFINE_integer('test_interval', 1, """How often to test the model during training""")
+tf.app.flags.DEFINE_integer('print_interval', 1, """How often to print a summary to console during training""")
+tf.app.flags.DEFINE_integer('checkpoint_steps', 1, """How many STEPS to wait before saving a checkpoint""")
 tf.app.flags.DEFINE_integer('batch_size', 4, """Number of images to process in a batch.""")
 
 # Hyperparameters:
@@ -55,13 +52,13 @@ def train():
     with tf.Graph().as_default():
 
         # Get a dictionary of our images, id's, and labels here
-        images, validation, val_batch = BonaAge.inputs(skip=False)
+        images, validation, val_batch = BonaAge.inputs(skip=True)
 
         # Build a graph that computes the prediction from the inference model (Forward pass)
-        logits, l2loss = BonaAge.forward_pass(images['image'], phase_train=True)
+        logits, l2loss = BonaAge.forward_pass(validation['image'], phase_train=False)
 
         # Make our ground truth the real age since the bone ages are normal
-        avg_label = tf.transpose(tf.divide(images['age'], 19))
+        avg_label = tf.transpose(tf.divide(validation['age'], 19))
 
         # Get some metrics
         predictions2 = tf.transpose(tf.multiply(logits, 19))
@@ -85,23 +82,19 @@ def train():
         # Initialize variables operation
         var_init = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
 
-        # Get the checkpoint
-        # ckpt = tf.train.get_checkpoint_state(FLAGS.train_dir)
-
         # Initialize the saver
         saver = tf.train.Saver()
 
-        # Initialize the restorer
-        # restorer = tf.train.import_meta_graph('training/Checkpoint.ckpt.meta')
-
-        # config Proto sets options for configuring the session like run on GPU, allocate GPU memory etc.
         with tf.Session() as mon_sess:
-
-            # Restore the saver
-            # if ckpt: restorer.restore(mon_sess, ckpt.model_checkpoint_path)
 
             # Initialize the variables
             mon_sess.run(var_init)
+
+            # Restore the learned variables
+            restorer = tf.train.import_meta_graph('training/Checkpoint.ckpt.meta')
+
+            # Restore the graph
+            restorer.restore(mon_sess, 'training/Checkpoint.ckpt')
 
             # Initialize the thread coordinator
             coord = tf.train.Coordinator()
@@ -115,44 +108,27 @@ def train():
             # Set the max step count
             max_steps = (FLAGS.epoch_size / FLAGS.batch_size) * FLAGS.num_epochs
 
-            # Define the checkpoint file:
-            checkpoint_file = os.path.join(FLAGS.train_dir, 'Checkpoint.ckpt')
+            # Perform one iteration
+            mon_sess.run(train_op)
 
             try:
                 while step <= max_steps:
-                    start_time = time.time()  # Start the timer for this iteration
-                    mon_sess.run(train_op)  # One iteration
-                    duration = time.time() - start_time  # Calculate duration of each iteration
-                    step += 1
-
-                    # Put if statements here for things you will do every x amount of steps
-                    if step % FLAGS.checkpoint_steps == 0:
-                        # Save the checkpoint
-                        print(" ---------------- SAVING CHECKPOINT ------------------")
-                        saver.save(mon_sess, checkpoint_file)
 
                     if step % FLAGS.print_interval == 0:  # This statement will print loss, step and other stuff
 
                         # Load some metrics for testing
-                        predictions1, label1, loss1, loss2 = mon_sess.run([predictions2, labels2, mse_loss, loss])
+                        predictions1, label1 = mon_sess.run([predictions2, labels2])
 
                         # Output the summary
-                        BonaAge.after_run(predictions1, label1, loss1, loss2, step, duration)
+                        BonaAge.after_run(predictions1, label1, 1, 1, step, 10)
 
-                        # Run a session to retrieve our summaries
-                        summary = mon_sess.run(all_summaries)
-
-                        # Add the summaries to the protobuf for Tensorboard
-                        summary_writer.add_summary(summary, step)
+                        # Increment step
+                        step += 1
 
             except tf.errors.OutOfRangeError:
                 print('Done with Training - Epoch limit reached')
 
             finally:
-
-                # Save the final checkpoint
-                print(" ---------------- SAVING FINAL CHECKPOINT ------------------ ")
-                saver.save(mon_sess, checkpoint_file)
 
                 # Stop threads when done
                 coord.request_stop()
@@ -165,10 +141,8 @@ def train():
 
 
 def main(argv=None):  # pylint: disable=unused-argument
-    # if tf.gfile.Exists(FLAGS.train_dir):
-    #     tf.gfile.DeleteRecursively(FLAGS.train_dir)
-    # tf.gfile.MakeDirs(FLAGS.train_dir)
     train()
+
 
 if __name__ == '__main__':
     tf.app.run()
