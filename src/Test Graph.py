@@ -41,11 +41,11 @@ def train():
         logits, l2loss = BonaAge.forward_pass(validation['image'], phase_train=False)
 
         # Make our ground truth the real age since the bone ages are normal
-        avg_label = tf.transpose(tf.divide(validation['age'], 19))
+        avg_label = tf.divide(tf.add(validation['label1'], validation['label2']), 2)
 
         # Get some metrics
         predictions2 = tf.transpose(tf.multiply(logits, 19))
-        labels2 = tf.transpose(tf.multiply(avg_label, 19))
+        labels2 = avg_label
 
         # Initialize variables operation
         var_init = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())

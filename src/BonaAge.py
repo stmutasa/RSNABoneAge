@@ -370,6 +370,7 @@ def calculate_errors(predictions, label, Girls=True):
             std_dev[i] = 7.31 / 12
 
         # Calculate the MAE
+        if predictions[i] < 0: predictions[i] = 0
         abs_err = abs(predictions[i] - label[i])
         tot_err += abs_err
 

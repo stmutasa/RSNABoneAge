@@ -61,7 +61,8 @@ def train():
         logits, l2loss = BonaAge.forward_pass(images['image'], phase_train=True)
 
         # Make our ground truth the real age since the bone ages are normal
-        avg_label = tf.transpose(tf.divide(images['age'], 19))
+        # avg_label = tf.transpose(tf.divide(images['age'], 19))        # The age truth version
+        avg_label = tf.transpose(tf.divide(tf.add(images['label1'], images['label2']), 38))
 
         # Get some metrics
         predictions2 = tf.transpose(tf.multiply(logits, 19))
