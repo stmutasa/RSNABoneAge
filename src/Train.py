@@ -17,13 +17,13 @@ FLAGS = tf.app.flags.FLAGS
 
 # Define some of the immutable variables
 tf.app.flags.DEFINE_string('train_dir', 'training/', """Directory to write event logs and save checkpoint files""")
-tf.app.flags.DEFINE_integer('num_epochs', 150, """Number of epochs to run""")
+tf.app.flags.DEFINE_integer('num_epochs', 1000, """Number of epochs to run""")
 # Young girls = 206 (51), OG: 340/85
 tf.app.flags.DEFINE_integer('epoch_size', 340, """How many images were loaded""")
 tf.app.flags.DEFINE_integer('test_interval', 650, """How often to test the model during training""")
 tf.app.flags.DEFINE_integer('print_interval', 150, """How often to print a summary to console during training""")
 tf.app.flags.DEFINE_integer('checkpoint_steps', 1000, """How many STEPS to wait before saving a checkpoint""")
-tf.app.flags.DEFINE_integer('batch_size', 16, """Number of images to process in a batch.""")
+tf.app.flags.DEFINE_integer('batch_size', 4, """Number of images to process in a batch.""")
 
 # Hyperparameters:
 # For the old girls run: lr = .001, dropout = 0.5, gamma = 0.001, moving decay = 0.999, lr decay: 0.95, steps = 130
