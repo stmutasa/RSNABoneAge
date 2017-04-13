@@ -18,6 +18,7 @@ import numpy as np
 
 import tensorflow as tf
 import Input
+import spatial_transformer as st
 
 # Define the FLAGS class to hold our immutable global variables
 FLAGS = tf.app.flags.FLAGS
@@ -56,46 +57,51 @@ def forward_pass(images, phase_train=True, bts=0):
     conv4 = convolution('Conv4', conv3, 3, 128, phase_train=phase_train)
 
     # To Do: Insert the affine transform layer here: Output of conv4 is [batch, 14,14,128]
-    # with tf.variable_scope('Transformer') as scope:
-    #
-    #     # Set up fully connected layer with 6 outputs
-    #     n_fc = 6
-    #     W_fc1 = tf.Variable(tf.zeros([14*14*128, n_fc]), name='W_fc1')
-    #
-    #     # Always start with the identity transformation
-    #     initial = np.array([[1.0, 0, 0], [0, 1.0, 0]])
-    #     initial = initial.astype('float32')
-    #     initial = initial.flatten()
-    #
-    #     b_fc1 = tf.Variable(initial_value=initial, name='b_fc1')
-    #     h_fc1 = tf.matmul(tf.zeros([FLAGS.batch_size, 14*14*128]), W_fc1) + b_fc1
-    #
-    #     output_size = (14, 14)
-    #     h_trans = batch_transformer(conv4, h_fc1, output_size)
-    #
-    # # The 5th convolutional layer
-    # with tf.variable_scope('Conv5') as scope:
-    #     # Define the Kernel. Can use Xavier init: contrib.layers.xavier_initializer())
-    #     kernel = tf.get_variable('Weights', shape=[1, 1, 6, 128],
-    #                              initializer=tf.truncated_normal_initializer(stddev=5e-2))
-    #
-    #     # Perform the actual convolution
-    #     conv = tf.nn.conv2d(h_trans, kernel, [1, 2, 2, 1], padding='VALID')  # Create a 2D tensor with BATCH_SIZE rows
-    #
-    #     # Relu activation
-    #     conv5 = tf.nn.relu(conv, name=scope.name)
-    #
-    #     # Create a histogram/scalar summary of the conv1 layer
-    #     _activation_summary(conv)
+    with tf.variable_scope('Transformer') as scope:
 
-    conv5 = convolution('Conv5', conv4, 3, 128, phase_train=phase_train)
+        # Set up fully connected layer with 6 outputs
+        n_fc = 6
+        W_fc1 = tf.Variable(tf.zeros([14 * 14 * 128, n_fc]), name='W_fc1')
+
+        # Always start with the identity transformation
+        initial = np.array([[1.0, 0, 0], [0, 1.0, 0]])
+        initial = initial.astype('float32')
+        initial = initial.flatten()
+
+        b_fc1 = tf.Variable(initial_value=initial, name='b_fc1')
+        h_fc1 = tf.matmul(tf.zeros([FLAGS.batch_size, 14 * 14 * 128]), W_fc1) + b_fc1
+
+        output_size = (14, 14)
+        h_trans = st.transformer(conv4, h_fc1, output_size)  # [?, 14, 14, ?]
+
+    # The 5th convolutional layer
+    with tf.variable_scope('Conv5') as scope:
+
+        # Set size of channels
+        C = h_trans.get_shape().as_list()[3]
+
+        # Define the Kernel. Can use Xavier init: contrib.layers.xavier_initializer())
+        kernel = tf.get_variable('Weights', shape=[1, 1, C, 128],
+                                 initializer=tf.truncated_normal_initializer(stddev=5e-2))
+
+        # Perform the actual convolution
+        conv = tf.nn.conv2d(h_trans, kernel, [1, 2, 2, 1], padding='VALID')  # Create a 2D tensor with BATCH_SIZE rows
+
+        # Relu activation
+        conv5 = tf.nn.relu(conv, name=scope.name)  # [?, 7, 7, 128]
+
+        # Create a histogram/scalar summary of the conv1 layer
+        _activation_summary(conv)
+
+    # conv5 = convolution('Conv5', conv4, 3, 128, phase_train=phase_train)
 
     # The Fc7 layer
     with tf.variable_scope('linear1') as scope:
-        reshape = tf.reshape(conv5, [batch_size, -1])  # Move everything to n by b matrix for a single matmul
+        reshape = tf.reshape(conv5, [batch_size, -1])  # [batch, ?]
         dim = reshape.get_shape()[1].value  # Get columns for the matrix multiplication
+        # [batch, 128]
         weights = tf.get_variable('weights', shape=[dim, 128], initializer=tf.truncated_normal_initializer(stddev=5e-2))
-        fc7 = tf.nn.relu(tf.matmul(reshape, weights), name=scope.name)  # returns mat of size batch x 512
+        fc7 = tf.nn.relu(tf.matmul(reshape, weights), name=scope.name)  # returns mat of size [batch x 128
         if phase_train: fc7 = tf.nn.dropout(fc7, keep_prob=FLAGS.dropout_factor)  # Apply dropout here
         _activation_summary(fc7)
 
@@ -108,16 +114,17 @@ def forward_pass(images, phase_train=True, bts=0):
         Logits = tf.transpose(Logits)
 
     # Calculate the L2 regularization penalty
-    L2_loss = (tf.nn.l2_loss(conv1) + tf.nn.l2_loss(conv2) + tf.nn.l2_loss(conv3) +
-               tf.nn.l2_loss(conv4) + tf.nn.l2_loss(conv5) + tf.nn.l2_loss(fc7) + tf.nn.l2_loss(W))
+    L2_loss = tf.Variable(0, name='L2_loss', dtype=tf.float32)
+
+    # Loop through the variables and append the loss
+    for var in tf.trainable_variables():
+        if 'Weights' in var.name:
+            L2_loss = tf.add(L2_loss, tf.nn.l2_loss(var))
 
     L2_loss = tf.multiply(L2_loss, FLAGS.l2_gamma)
 
     # Add it to the collection
     tf.add_to_collection('losses', L2_loss)
-
-    # Create a summary scalar of L2 loss
-    tf.summary.scalar('L2 Loss Penalty', L2_loss)
 
     return Logits, L2_loss  # Return whatever the name of the final logits variable is
 

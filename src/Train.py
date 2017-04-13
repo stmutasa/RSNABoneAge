@@ -23,7 +23,7 @@ tf.app.flags.DEFINE_integer('epoch_size', 340, """How many images were loaded"""
 tf.app.flags.DEFINE_integer('test_interval', 650, """How often to test the model during training""")
 tf.app.flags.DEFINE_integer('print_interval', 150, """How often to print a summary to console during training""")
 tf.app.flags.DEFINE_integer('checkpoint_steps', 1000, """How many STEPS to wait before saving a checkpoint""")
-tf.app.flags.DEFINE_integer('batch_size', 5, """Number of images to process in a batch.""")
+tf.app.flags.DEFINE_integer('batch_size', 16, """Number of images to process in a batch.""")
 
 # Hyperparameters:
 # For the old girls run: lr = .001, dropout = 0.5, gamma = 0.001, moving decay = 0.999, lr decay: 0.95, steps = 130
@@ -61,8 +61,8 @@ def train():
         logits, l2loss = BonaAge.forward_pass(images['image'], phase_train=True)
 
         # Make our ground truth the real age since the bone ages are normal
-        # avg_label = tf.transpose(tf.divide(images['age'], 19))        # The age truth version
-        avg_label = tf.transpose(tf.divide(tf.add(images['label1'], images['label2']), 38))
+        avg_label = tf.transpose(tf.divide(images['age'], 19))  # The age truth version
+        # avg_label = tf.transpose(tf.divide(tf.add(images['label1'], images['label2']), 38))   # Label truth
 
         # Get some metrics
         predictions2 = tf.transpose(tf.multiply(logits, 19))
