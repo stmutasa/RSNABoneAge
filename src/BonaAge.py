@@ -57,7 +57,7 @@ def forward_pass(images, phase_train=True, bts=0):
     conv4 = convolution('Conv4', conv3, 3, 128, phase_train=phase_train)
 
     # To Do: Insert the affine transform layer here: Output of conv4 is [batch, 14,14,128]
-    with tf.variable_scope('Trans') as scope:
+    with tf.variable_scope('Transformer') as scope:
 
         # Set up the localisation network to calculate floc(u):
         W1 = tf.get_variable('Weights1', shape=[14 * 14 * 128, 20],
@@ -78,21 +78,6 @@ def forward_pass(images, phase_train=True, bts=0):
         # Define the output size to the original dimensions
         output_size = (14, 14)
         h_trans = st.transformer(conv4, H2, output_size)
-
-        # # Set up fully connected layer with 6 outputs
-        # n_fc = 6
-        # W_fc1 = tf.Variable(tf.zeros([14 * 14 * 128, n_fc]), name='W_fc1')
-        #
-        # # Always start with the identity transformation
-        # initial = np.array([[1.0, 0, 0], [0, 1.0, 0]])
-        # initial = initial.astype('float32')
-        # initial = initial.flatten()
-        #
-        # b_fc1 = tf.Variable(initial_value=initial, name='b_fc1')
-        # h_fc1 = tf.matmul(tf.zeros([FLAGS.batch_size, 14 * 14 * 128]), W_fc1) + b_fc1
-        #
-        # output_size = (14, 14)
-        # h_trans = st.transformer(conv4, h_fc1, output_size)  # [?, 14, 14, ?]
 
     # conv5 = convolution('Conv5', conv4, 3, 128, phase_train=phase_train)
     conv5 = convolution('Conv5', h_trans, 1, 128, phase_train=phase_train)
@@ -126,6 +111,9 @@ def forward_pass(images, phase_train=True, bts=0):
 
     # Add it to the collection
     tf.add_to_collection('losses', L2_loss)
+
+    # Activation summary
+    tf.summary.scalar('L2_Loss', L2_loss)
 
     return Logits, L2_loss  # Return whatever the name of the final logits variable is
 
@@ -201,8 +189,10 @@ def backward_pass(total_loss):
     # Get the tensor that keeps track of step in this graph or create one if not there
     global_step = tf.contrib.framework.get_or_create_global_step()
 
-    # Use learning rate decay
+    # Print summary of total loss
+    tf.summary.scalar('Total_Loss', total_loss)
 
+    # Use learning rate decay
     lr = tf.train.exponential_decay(FLAGS.learning_rate, global_step, FLAGS.lr_steps, FLAGS.lr_decay, staircase=True)
     tf.summary.scalar('learning_rate', lr)  # Output a scalar sumamry to TensorBoard
 
