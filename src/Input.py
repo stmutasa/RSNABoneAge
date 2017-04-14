@@ -205,10 +205,10 @@ def load_protobuf(input_name, return_dict=True):
     # Apply image pre processing here:
     image = tf.image.random_flip_left_right(image)  # First randomly flip left/right
     image = tf.image.random_flip_up_down(image)  # Up/down flip
-    image = tf.image.random_brightness(image, max_delta=0.5)  # Apply random brightness
 
     # For random rotation, generate a random angle and apply the rotation
-    # image = tf.contrib.image.rotate(image, radians(float(randint(0, 360))))
+    radians = tf.random_uniform([1], 0, 0.8)
+    image = tf.contrib.image.rotate(image, radians)
     image = tf.image.per_image_standardization(image=image)  # Subtract mean and div by variance
 
     # # Resize images

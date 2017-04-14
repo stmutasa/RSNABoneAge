@@ -45,7 +45,7 @@ def train():
 
         # Get some metrics
         predictions2 = tf.transpose(tf.multiply(logits, 19))
-        labels2 = avg_label
+        labels2 = validation['age']
 
         # Initialize variables operation
         var_init = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
@@ -59,10 +59,10 @@ def train():
             mon_sess.run(var_init)
 
             # Restore the learned variables
-            restorer = tf.train.import_meta_graph('training/Checkpoint1.meta')
+            restorer = tf.train.import_meta_graph('training/Checkpoint4.meta')
 
             # Restore the graph
-            restorer.restore(mon_sess, 'training/Checkpoint1')
+            restorer.restore(mon_sess, 'training/Checkpoint4')
 
             # Initialize the thread coordinator
             coord = tf.train.Coordinator()
