@@ -100,12 +100,15 @@ def forward_pass(images, phase_train=True, bts=0):
         Logits = tf.transpose(Logits)
 
     # Calculate the L2 regularization penalty
-    L2_loss = tf.Variable(0, name='L2_loss', dtype=tf.float32)
+    # L2_loss = tf.Variable(0, name='L2_loss', dtype=tf.float32)
 
     # Loop through the variables and append the loss
-    for var in tf.trainable_variables():
-        if 'Weights' in var.name:
-            L2_loss = tf.add(L2_loss, tf.nn.l2_loss(var))
+    # for var in tf.trainable_variables():
+    #     if 'Weights' in var.name:
+    #         L2_loss = tf.add(L2_loss, tf.nn.l2_loss(var))
+
+    L2_loss = (tf.nn.l2_loss(conv1) + tf.nn.l2_loss(conv2) + tf.nn.l2_loss(conv3) +
+               tf.nn.l2_loss(conv4) + tf.nn.l2_loss(conv5) + tf.nn.l2_loss(fc7) + tf.nn.l2_loss(h_trans))
 
     L2_loss = tf.multiply(L2_loss, FLAGS.l2_gamma)
 

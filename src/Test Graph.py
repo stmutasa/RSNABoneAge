@@ -59,10 +59,10 @@ def train():
             mon_sess.run(var_init)
 
             # Restore the learned variables
-            restorer = tf.train.import_meta_graph('training/CheckpointFinal.meta')
+            restorer = tf.train.import_meta_graph('training/Checkpoint1.meta')
 
             # Restore the graph
-            restorer.restore(mon_sess, 'training/CheckpointFinal')
+            restorer.restore(mon_sess, 'training/Checkpoint1')
 
             # Initialize the thread coordinator
             coord = tf.train.Coordinator()
