@@ -64,7 +64,7 @@ def read_labels(filename):
     return labels
 
 
-def img_protobuf(images, labels, name, gender='F', age='15'):
+def img_protobuf(images, labels, name):
     """ Combines the images and labels given and saves them to a TFRecords protocol buffer
         Will call this function one time each to save a training, validation and test set.
         Combine the image[index] as an element in the nested dictionary
@@ -78,6 +78,19 @@ def img_protobuf(images, labels, name, gender='F', age='15'):
     filenames = os.path.join(records_file, name + 'train' + '.tfrecords')
     val_filenames = os.path.join(records_file, name + 'test' + '.tfrecords')
 
+    # First skip some images based on what we're training:
+    if FLAGS.model == 1:
+        age = 5
+        gender = 'F'
+    elif FLAGS.model == 2:
+        age = 15
+        gender = 'F'
+    elif FLAGS.model == 3:
+        age = 5
+        gender = 'M'
+    else:
+        age = 15
+        gender = 'M'
 
     # Define the class we will use to write the records to the .tfrecords protobuf. the init opens the file for writing
     writer = tf.python_io.TFRecordWriter(filenames)
@@ -88,10 +101,15 @@ def img_protobuf(images, labels, name, gender='F', age='15'):
     # Loop through each example and append the protobuf with the specified features
     for index, feature in labels.items():
 
-        # First skip some images...
-
         # If the images don't exist
         if index not in images: continue
+        if float(labels[index]['ChrAge']) > 20 \
+                or float(labels[index]['Reading1']) > 20 \
+                or float(labels[index]['Reading2']) > 20:
+
+            print ('Skipping Age: %s, labels %s %s' %(labels[index]['ChrAge'], labels[index]['Reading1'],
+                                                      labels[index]['Reading2']))
+            continue
 
         # Skip the gender not specified by the user
         if labels[index]['Gender'] != gender:
@@ -108,8 +126,6 @@ def img_protobuf(images, labels, name, gender='F', age='15'):
             if float(labels[index]['ChrAge']) >= 10:
                 counter += 1
                 continue
-
-        # if das > 15: continue FOR TESTING OVERFIT
 
         # This image made it in increment the loaded image counter
         das += 1
@@ -207,7 +223,7 @@ def load_protobuf(input_name, return_dict=True):
     image = tf.image.random_flip_up_down(image)  # Up/down flip
 
     # For random rotation, generate a random angle and apply the rotation
-    radians = tf.random_uniform([1], 0, 0.8)
+    radians = tf.random_uniform([1], 0, 0.52)
     image = tf.contrib.image.rotate(image, radians)
     image = tf.image.per_image_standardization(image=image)  # Subtract mean and div by variance
 

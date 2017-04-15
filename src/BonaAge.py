@@ -257,10 +257,6 @@ def inputs(skip=False):
         # First load the raw data using the handy glob library
         globs = glob.glob(FLAGS.data_dir + '*.jpg')  # Returns a list of filenames
 
-        # First request what gender to train:
-        gender = input('Please enter what Gender you would like to train: -> ')
-        age = input('Now enter what age group you would like to train ( Above or below 10) : -> ')
-
         i = 0
         for file_id in globs:  # Loop through every jpeg in the data directory
 
@@ -280,7 +276,7 @@ def inputs(skip=False):
 
         # Part 2: Save the images and labels to protobuf -------------------------------
         print('------%s Images successfully loaded------------------Saving images to records...' % i)
-        val_size = Input.img_protobuf(images, labels, 'bonageproto', gender=gender.upper(), age=int(age))
+        val_size = Input.img_protobuf(images, labels, 'bonageproto')
 
     else:
         print('-------------------------Previously saved records found! Loading...')
@@ -323,55 +319,60 @@ def calculate_errors(predictions, label, Girls=True):
     for i in range(0, total):
 
         # Bunch of if statements assigning the STD for the patient's true age
-        if label[i] <= (3 / 12):
-            std_dev[i] = 0.72 / 12
-        elif label[i] <= (6 / 12):
-            std_dev[i] = 1.16 / 12
-        elif label[i] <= (9 / 12):
-            std_dev[i] = 1.36 / 12
-        elif label[i] <= (12 / 12):
-            std_dev[i] = 1.77 / 12
-        elif label[i] <= (18 / 12):
-            std_dev[i] = 3.49 / 12
-        elif label[i] <= (24 / 12):
-            std_dev[i] = 4.64 / 12
-        elif label[i] <= (30 / 12):
-            std_dev[i] = 5.37 / 12
-        elif label[i] <= 3:
-            std_dev[i] = 5.97 / 12
-        elif label[i] <= 3.5:
-            std_dev[i] = 7.48 / 12
-        elif label[i] <= 4:
-            std_dev[i] = 8.98 / 12
-        elif label[i] <= 4.5:
-            std_dev[i] = 10.73 / 12
-        elif label[i] <= 5:
-            std_dev[i] = 11.65 / 12
-        elif label[i] <= 6:
-            std_dev[i] = 10.23 / 12
-        elif label[i] <= 7:
-            std_dev[i] = 9.64 / 12
-        elif label[i] <= 8:
-            std_dev[i] = 10.23 / 12
-        elif label[i] <= 9:
-            std_dev[i] = 10.74 / 12
-        elif label[i] <= 10:
-            std_dev[i] = 11.73 / 12
-        elif label[i] <= 11:
-            std_dev[i] = 11.94 / 12
-        elif label[i] <= 12:
-            std_dev[i] = 10.24 / 12
-        elif label[i] <= 13:
-            std_dev[i] = 10.67 / 12
-        elif label[i] <= 14:
-            std_dev[i] = 11.3 / 12
-        elif label[i] <= 15:
-            std_dev[i] = 9.23 / 12
-        else:
-            std_dev[i] = 7.31 / 12
+        if FLAGS.model < 3: # Girls
+            if label[i] <= (3 / 12): std_dev[i] = 0.72 / 12
+            elif label[i] <= (6 / 12): std_dev[i] = 1.16 / 12
+            elif label[i] <= (9 / 12): std_dev[i] = 1.36 / 12
+            elif label[i] <= (12 / 12): std_dev[i] = 1.77 / 12
+            elif label[i] <= (18 / 12): std_dev[i] = 3.49 / 12
+            elif label[i] <= (24 / 12): std_dev[i] = 4.64 / 12
+            elif label[i] <= (30 / 12): std_dev[i] = 5.37 / 12
+            elif label[i] <= 3: std_dev[i] = 5.97 / 12
+            elif label[i] <= 3.5: std_dev[i] = 7.48 / 12
+            elif label[i] <= 4: std_dev[i] = 8.98 / 12
+            elif label[i] <= 4.5: std_dev[i] = 10.73 / 12
+            elif label[i] <= 5: std_dev[i] = 11.65 / 12
+            elif label[i] <= 6: std_dev[i] = 10.23 / 12
+            elif label[i] <= 7: std_dev[i] = 9.64 / 12
+            elif label[i] <= 8: std_dev[i] = 10.23 / 12
+            elif label[i] <= 9: std_dev[i] = 10.74 / 12
+            elif label[i] <= 10: std_dev[i] = 11.73 / 12
+            elif label[i] <= 11: std_dev[i] = 11.94 / 12
+            elif label[i] <= 12: std_dev[i] = 10.24 / 12
+            elif label[i] <= 13: std_dev[i] = 10.67 / 12
+            elif label[i] <= 14: std_dev[i] = 11.3 / 12
+            elif label[i] <= 15: std_dev[i] = 9.23 / 12
+            else: std_dev[i] = 7.31 / 12
+
+        else:   # Boys
+            if label[i] <= (3 / 12): std_dev[i] = 0.72 / 12
+            elif label[i] <= (6 / 12): std_dev[i] = 1.13 / 12
+            elif label[i] <= (9 / 12): std_dev[i] = 1.43 / 12
+            elif label[i] <= (12 / 12): std_dev[i] = 1.97 / 12
+            elif label[i] <= (18 / 12): std_dev[i] = 3.52 / 12
+            elif label[i] <= (24 / 12): std_dev[i] = 3.92 / 12
+            elif label[i] <= (30 / 12): std_dev[i] = 4.52 / 12
+            elif label[i] <= 3: std_dev[i] = 5.08 / 12
+            elif label[i] <= 3.5: std_dev[i] = 5.40 / 12
+            elif label[i] <= 4: std_dev[i] = 6.66 / 12
+            elif label[i] <= 4.5: std_dev[i] = 8.36 / 12
+            elif label[i] <= 5: std_dev[i] = 8.79 / 12
+            elif label[i] <= 6: std_dev[i] = 9.17 / 12
+            elif label[i] <= 7: std_dev[i] = 8.91 / 12
+            elif label[i] <= 8: std_dev[i] = 9.10 / 12
+            elif label[i] <= 9: std_dev[i] = 9.0 / 12
+            elif label[i] <= 10: std_dev[i] = 9.79 / 12
+            elif label[i] <= 11: std_dev[i] = 10.09 / 12
+            elif label[i] <= 12: std_dev[i] = 10.38 / 12
+            elif label[i] <= 13: std_dev[i] = 10.44 / 12
+            elif label[i] <= 14: std_dev[i] = 10.72 / 12
+            elif label[i] <= 15: std_dev[i] = 11.32 / 12
+            elif label[i] <= 16: std_dev[i] = 12.86 / 12
+            else: std_dev[i] = 13.05 / 12
 
         # Calculate the MAE
         if predictions[i] < 0: predictions[i] = 0
+        if predictions[i] > 18: predictions[i] = 18
         abs_err = abs(predictions[i] - label[i])
         tot_err += abs_err
 

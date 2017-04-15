@@ -18,6 +18,7 @@ FLAGS = tf.app.flags.FLAGS
 # Define some of the immutable variables
 tf.app.flags.DEFINE_string('train_dir', 'training/', """Directory to write event logs and save checkpoint files""")
 tf.app.flags.DEFINE_integer('num_epochs', 1000, """Number of epochs to run""")
+tf.app.flags.DEFINE_integer('model', 4, """1 Y=F, 2=OF, 3=YM, 4=OM""")
 # Young girls = 206 (51), OG: 340/85
 tf.app.flags.DEFINE_integer('epoch_size', 340, """How many images were loaded""")
 tf.app.flags.DEFINE_integer('test_interval', 650, """How often to test the model during training""")
@@ -26,15 +27,15 @@ tf.app.flags.DEFINE_integer('checkpoint_steps', 8500, """How many STEPS to wait 
 tf.app.flags.DEFINE_integer('batch_size', 4, """Number of images to process in a batch.""")
 
 # Hyperparameters:
-# For the old girls run: lr = .001, dropout = 0.5, gamma = 0.001, moving decay = 0.999, lr decay: 0.95, steps = 130
-# Young girls run:l2 = 0.001, lr = 0.001, moving decay = 0.999, dropout = 1. beta: 0.9 and 0.999: 100% % 90k
+# For the old girls run: lr = 1e-4, dropout = 0.5, L2 = 1e-3, moving decay = 0.999, lr decay: 0.98, steps = 340
+# Young girls run:l2 = 0.001, lr = 0.001, Lr decay = 0.99 @ 200, moving decay = 0.999, dropout = 0.5. beta: 0.9 and 0.999:
 # Old male run: l2 = 0.001, lr = 0.001, moving decay = 0.999, dropout = 0.5. lr decay 0.99, lr steps 200
 # young male run: l2 = 0.001, lr = 0.001, moving decay = 0.999, dropout = 0.5. lr decay 0.99, lr steps 200
 tf.app.flags.DEFINE_float('dropout_factor', 0.5, """ p value for the dropout layer""")
-tf.app.flags.DEFINE_float('l2_gamma', 0.001, """ The gamma value for regularization loss""")
-tf.app.flags.DEFINE_float('learning_rate', 1e-3, """Initial learning rate""")
-tf.app.flags.DEFINE_float('lr_decay', 0.99, """The base factor for exp learning rate decay""")
-tf.app.flags.DEFINE_integer('lr_steps', 200, """ The number of steps until we decay the learning rate""")
+tf.app.flags.DEFINE_float('l2_gamma', 1e-3, """ The gamma value for regularization loss""")
+tf.app.flags.DEFINE_float('learning_rate', 1e-4, """Initial learning rate""")
+tf.app.flags.DEFINE_float('lr_decay', 0.98, """The base factor for exp learning rate decay""")
+tf.app.flags.DEFINE_integer('lr_steps', 340, """ The number of steps until we decay the learning rate""")
 tf.app.flags.DEFINE_float('moving_avg_decay', 0.999, """ The decay rate for the moving average tracker""")
 
 # Hyperparameters to control the optimizer

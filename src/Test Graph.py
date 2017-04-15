@@ -59,10 +59,11 @@ def train():
             mon_sess.run(var_init)
 
             # Restore the learned variables
-            restorer = tf.train.import_meta_graph('training/Checkpoint4.meta')
+            num = 5
+            restorer = tf.train.import_meta_graph('training/Checkpoint%s.meta' %num)
 
             # Restore the graph
-            restorer.restore(mon_sess, 'training/Checkpoint4')
+            restorer.restore(mon_sess, 'training/Checkpoint%s' %num)
 
             # Initialize the thread coordinator
             coord = tf.train.Coordinator()
@@ -71,7 +72,7 @@ def train():
             threads = tf.train.start_queue_runners(sess=mon_sess, coord=coord)
 
             # Initialize the step counter
-            step = 0
+            step = 3
 
             # Set the max step count
             max_steps = (FLAGS.epoch_size / FLAGS.batch_size) * FLAGS.num_epochs
