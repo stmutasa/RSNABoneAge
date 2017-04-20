@@ -56,7 +56,7 @@ def forward_pass(images, phase_train=True, bts=0):
     # The 4th convolutional layer
     conv4 = convolution('Conv4', conv3, 3, 128, phase_train=phase_train)
 
-    # To Do: Insert the affine transform layer here: Output of conv4 is [batch, 14,14,128]
+    # The affine transform layer here: Output of conv4 is [batch, 14,14,128]
     with tf.variable_scope('Transformer') as scope:
 
         # Set up the localisation network to calculate floc(u):
@@ -64,6 +64,10 @@ def forward_pass(images, phase_train=True, bts=0):
                              initializer=tf.truncated_normal_initializer(stddev=5e-2))
         B1 = tf.get_variable('Bias1', shape=[20], initializer=tf.truncated_normal_initializer(stddev=5e-2))
         W2 = tf.get_variable('Weights2', shape=[20, 6], initializer=tf.truncated_normal_initializer(stddev=5e-2))
+
+        # Add weights to collection
+        tf.add_to_collection('weights', W1)
+        tf.add_to_collection('weights', W2)
 
         # Always start with the identity transformation
         initial = np.array([[1.0, 0, 0], [0, 1.0, 0]])
@@ -87,6 +91,7 @@ def forward_pass(images, phase_train=True, bts=0):
         reshape = tf.reshape(conv5, [batch_size, -1])  # [batch, ?]
         dim = reshape.get_shape()[1].value  # Get columns for the matrix multiplication
         weights = tf.get_variable('weights', shape=[dim, 128], initializer=tf.truncated_normal_initializer(stddev=5e-2))
+        tf.add_to_collection('weights', weights)
         fc7 = tf.nn.relu(tf.matmul(reshape, weights), name=scope.name)  # returns mat of size [batch x 128
         if phase_train: fc7 = tf.nn.dropout(fc7, keep_prob=FLAGS.dropout_factor)  # Apply dropout here
         _activation_summary(fc7)
@@ -94,23 +99,17 @@ def forward_pass(images, phase_train=True, bts=0):
     # The linear layer
     with tf.variable_scope('linear2') as scope:
         W = tf.get_variable('Weights', shape=[128, 1], initializer=tf.truncated_normal_initializer(stddev=5e-2))
+        tf.add_to_collection('weights', W)
         b = tf.Variable(np.ones(batch_size), name='Bias', dtype=tf.float32)
         Logits = tf.add(tf.matmul(fc7, W), b, name=scope.name)
         Logits = tf.slice(Logits, [0, 0], [batch_size, 1])
         Logits = tf.transpose(Logits)
 
-    # Calculate the L2 regularization penalty
-    # L2_loss = tf.Variable(0, name='L2_loss', dtype=tf.float32)
+    # Retreive the weights collection
+    weights = tf.get_collection('weights')
 
-    # Loop through the variables and append the loss
-    # for var in tf.trainable_variables():
-    #     if 'Weights' in var.name:
-    #         L2_loss = tf.add(L2_loss, tf.nn.l2_loss(var))
-
-    L2_loss = (tf.nn.l2_loss(conv1) + tf.nn.l2_loss(conv2) + tf.nn.l2_loss(conv3) +
-               tf.nn.l2_loss(conv4) + tf.nn.l2_loss(conv5) + tf.nn.l2_loss(fc7) + tf.nn.l2_loss(h_trans))
-
-    L2_loss = tf.multiply(L2_loss, FLAGS.l2_gamma)
+    # Sum the losses
+    L2_loss = tf.multiply(tf.add_n([tf.nn.l2_loss(v) for v in weights]), FLAGS.l2_gamma)
 
     # Add it to the collection
     tf.add_to_collection('losses', L2_loss)
@@ -140,9 +139,13 @@ def convolution(scope, X, F, K, S=2, padding='VALID', phase_train=None):
 
     # Set the scope
     with tf.variable_scope(scope) as scope:
+
         # Define the Kernel. Can use Xavier init: contrib.layers.xavier_initializer())
         kernel = tf.get_variable('Weights', shape=[F, F, C, K],
                                  initializer=tf.truncated_normal_initializer(stddev=5e-2))
+
+        # Add to the weights collection
+        tf.add_to_collection('weights', kernel)
 
         # Perform the actual convolution
         conv = tf.nn.conv2d(X, kernel, [1, S, S, 1], padding=padding)  # Create a 2D tensor with BATCH_SIZE rows
@@ -315,7 +318,7 @@ def calculate_errors(predictions, label, Girls=True):
     std_dev = np.zeros_like(predictions, dtype='float32')  # The array that will hold our STD Deviations
     tot_err = 0.0
 
-    # No apply the standard deviations TODO: Boys have different ranges lol
+    # No apply the standard deviations
     for i in range(0, total):
 
         # Bunch of if statements assigning the STD for the patient's true age
@@ -389,7 +392,7 @@ def calculate_errors(predictions, label, Girls=True):
 def after_run(predictions1, label1, loss1, loss_value, step, duration):
     # First print the number of examples per step
     eg_s = FLAGS.batch_size / duration
-    print('Step %d, Loss: = %.2f (%.1f eg/s;)' % (step, loss_value, eg_s), end=" ")
+    print('Step %d, Loss: = %.8f (%.1f eg/s;)' % (step, loss_value, eg_s), end=" ")
 
     predictions = predictions1.astype(np.float)
     label = label1.astype(np.float)

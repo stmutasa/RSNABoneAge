@@ -14,16 +14,17 @@ _author_ = 'Simi'
 FLAGS = tf.app.flags.FLAGS
 
 # Define some of the immutable variables
-# Train and validation set sizes: YG: 206/51, OG: 340/85
+# Train and validation set sizes: YG: 206/51, OG: 340/85, OM: 346/86
 tf.app.flags.DEFINE_string('train_dir', 'training/', """Directory to write event logs and save checkpoint files""")
+tf.app.flags.DEFINE_integer('model', 4, """1 Y=F, 2=OF, 3=YM, 4=OM""")
 tf.app.flags.DEFINE_integer('num_epochs', 1, """Number of epochs to run""")
-tf.app.flags.DEFINE_integer('epoch_size', 85, """How many images were loaded""")
+tf.app.flags.DEFINE_integer('epoch_size', 86, """How many images were loaded""")
 tf.app.flags.DEFINE_integer('print_interval', 1, """How often to print a summary to console during training""")
 tf.app.flags.DEFINE_integer('batch_size', 4, """Number of images to process in a batch.""")
 
 # Hyperparameters:
 tf.app.flags.DEFINE_float('dropout_factor', 0.5, """ p value for the dropout layer""")
-tf.app.flags.DEFINE_float('l2_gamma', 0.001, """ The gamma value for regularization loss""")
+tf.app.flags.DEFINE_float('l2_gamma', 1e-4, """ The gamma value for regularization loss""")
 
 # Define a custom training class
 def train():
@@ -45,7 +46,7 @@ def train():
 
         # Get some metrics
         predictions2 = tf.transpose(tf.multiply(logits, 19))
-        labels2 = validation['age']
+        labels2 = avg_label
 
         # Initialize variables operation
         var_init = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
@@ -59,7 +60,7 @@ def train():
             mon_sess.run(var_init)
 
             # Restore the learned variables
-            num = 5
+            num = 3
             restorer = tf.train.import_meta_graph('training/Checkpoint%s.meta' %num)
 
             # Restore the graph
@@ -72,7 +73,7 @@ def train():
             threads = tf.train.start_queue_runners(sess=mon_sess, coord=coord)
 
             # Initialize the step counter
-            step = 3
+            step = 0
 
             # Set the max step count
             max_steps = (FLAGS.epoch_size / FLAGS.batch_size) * FLAGS.num_epochs
