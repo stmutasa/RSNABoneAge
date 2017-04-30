@@ -30,7 +30,7 @@ tf.app.flags.DEFINE_string('data_dir', 'data/raw/', """Path to the data director
 TOWER_NAME = 'tower'  # If training on multiple GPU's, prefix all op names with tower_name
 
 
-def forward_pass(images, phase_train=True, bts=0):
+def forward_pass(images, phase_train1=True, bts=0):
     """ This function builds the network architecture and performs the forward pass
         Args: Images = our input dictionary
         Returns: Logits (log odds units)
@@ -43,6 +43,9 @@ def forward_pass(images, phase_train=True, bts=0):
         batch_size = bts
     else:
         batch_size = FLAGS.batch_size
+
+    # Set Phase train variable
+    phase_train = tf.Variable(phase_train1, trainable=False, dtype=tf.bool)
 
     # The first convolutional layer
     conv1 = convolution('Conv1', images, 7, 64, phase_train=phase_train)
@@ -76,7 +79,7 @@ def forward_pass(images, phase_train=True, bts=0):
         B2 = tf.Variable(initial_value=initial, name='Bias2')
 
         # Define the two layers of the localisation network
-        H1 = tf.nn.tanh(tf.matmul(tf.zeros([FLAGS.batch_size, 14 * 14 * 128]), W1) + B1)
+        H1 = tf.nn.tanh(tf.matmul(tf.zeros([batch_size, 14 * 14 * 128]), W1) + B1)
         H2 = tf.nn.tanh(tf.matmul(H1, W2) + B2)
 
         # Define the output size to the original dimensions
@@ -150,6 +153,7 @@ def convolution(scope, X, F, K, S=2, padding='VALID', phase_train=None):
         # Perform the actual convolution
         conv = tf.nn.conv2d(X, kernel, [1, S, S, 1], padding=padding)  # Create a 2D tensor with BATCH_SIZE rows
 
+        # # Apply the batch normalization. Updates weights during training phase only
         # norm = tf.cond(phase_train,
         #                lambda: tf.contrib.layers.batch_norm(conv, decay=0.999, is_training=True, reuse=None),
         #                lambda: tf.contrib.layers.batch_norm(conv, is_training=False, reuse=True, scope='norm'))
@@ -301,7 +305,7 @@ def RunningMean(x, N):
     return np.convolve(x, np.ones((N,)) / N)[(N - 1):]
 
 
-def calculate_errors(predictions, label, Girls=True):
+def calculate_errors(predictions, label):
     """
     This function retreives the labels and predictions and then outputs the accuracy based on the actual
     standard deviations from the atlas of bone ages. The prediction is considered "right" if it's within
@@ -392,7 +396,7 @@ def calculate_errors(predictions, label, Girls=True):
 def after_run(predictions1, label1, loss1, loss_value, step, duration):
     # First print the number of examples per step
     eg_s = FLAGS.batch_size / duration
-    print('Step %d, Loss: = %.8f (%.1f eg/s;)' % (step, loss_value, eg_s), end=" ")
+    print('Step %d, L2 Loss: = %.8f (%.1f eg/s;)' % (step, loss_value, eg_s), end=" ")
 
     predictions = predictions1.astype(np.float)
     label = label1.astype(np.float)

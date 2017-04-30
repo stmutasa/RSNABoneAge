@@ -16,9 +16,9 @@ FLAGS = tf.app.flags.FLAGS
 # Define some of the immutable variables
 # Train and validation set sizes: YG: 206/51, OG: 340/85, OM: 346/86
 tf.app.flags.DEFINE_string('train_dir', 'training/', """Directory to write event logs and save checkpoint files""")
-tf.app.flags.DEFINE_integer('model', 4, """1 Y=F, 2=OF, 3=YM, 4=OM""")
+tf.app.flags.DEFINE_integer('model', 1, """1 Y=F, 2=OF, 3=YM, 4=OM""")
 tf.app.flags.DEFINE_integer('num_epochs', 1, """Number of epochs to run""")
-tf.app.flags.DEFINE_integer('epoch_size', 86, """How many images were loaded""")
+tf.app.flags.DEFINE_integer('epoch_size', 51, """How many images were loaded""")
 tf.app.flags.DEFINE_integer('print_interval', 1, """How often to print a summary to console during training""")
 tf.app.flags.DEFINE_integer('batch_size', 4, """Number of images to process in a batch.""")
 
@@ -39,7 +39,7 @@ def train():
         images, validation, val_batch = BonaAge.inputs(skip=True)
 
         # Build a graph that computes the prediction from the inference model (Forward pass)
-        logits, l2loss = BonaAge.forward_pass(validation['image'], phase_train=False)
+        logits, l2loss = BonaAge.forward_pass(validation['image'], phase_train1=False)
 
         # Make our ground truth the real age since the bone ages are normal
         avg_label = tf.divide(tf.add(validation['label1'], validation['label2']), 2)
@@ -60,7 +60,7 @@ def train():
             mon_sess.run(var_init)
 
             # Restore the learned variables
-            num = 3
+            num = 1
             restorer = tf.train.import_meta_graph('training/Checkpoint%s.meta' %num)
 
             # Restore the graph
