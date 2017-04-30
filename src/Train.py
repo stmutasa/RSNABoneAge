@@ -17,13 +17,12 @@ FLAGS = tf.app.flags.FLAGS
 
 # Define some of the immutable variables
 tf.app.flags.DEFINE_string('train_dir', 'training/', """Directory to write event logs and save checkpoint files""")
-tf.app.flags.DEFINE_integer('num_epochs', 1300, """Number of epochs to run""")
+tf.app.flags.DEFINE_integer('num_epochs', 3000, """Number of epochs to run""")
 tf.app.flags.DEFINE_integer('model', 4, """1 Y=F, 2=OF, 3=YM, 4=OM""")
 # Young girls = 206 (51), OG: 340/85, OM: 346/86, YM: 214/53
 tf.app.flags.DEFINE_integer('epoch_size', 346, """How many images were loaded""")
-tf.app.flags.DEFINE_integer('test_interval', 650, """How often to test the model during training""")
 tf.app.flags.DEFINE_integer('print_interval', 150, """How often to print a summary to console during training""")
-tf.app.flags.DEFINE_integer('checkpoint_steps', 7000, """How many STEPS to wait before saving a checkpoint""")
+tf.app.flags.DEFINE_integer('checkpoint_steps', 3500, """How many STEPS to wait before saving a checkpoint""")
 tf.app.flags.DEFINE_integer('batch_size', 4, """Number of images to process in a batch.""")
 
 # Hyperparameters:
@@ -48,9 +47,6 @@ tf.app.flags.DEFINE_bool('use_nesterov', True, """ Whether to use nesterov""")
 
 # Define a custom training class
 def train():
-    """ Train our network for a number of steps
-    The 'with' statement tells python to try and execute the following code, and utilize a custom defined __exit__
-    function once it is done or it fails """
 
     # Makes this the default graph where all ops will be added
     with tf.Graph().as_default():
@@ -59,7 +55,7 @@ def train():
         images, validation, val_batch = BonaAge.inputs(skip=False)
 
         # Build a graph that computes the prediction from the inference model (Forward pass)
-        logits, l2loss = BonaAge.forward_pass(images['image'], phase_train=True)
+        logits, l2loss = BonaAge.forward_pass(images['image'], phase_train1=True)
 
         # Make our ground truth the real age since the bone ages are normal
         # avg_label = tf.transpose(tf.divide(images['age'], 19))  # The age truth version
@@ -131,8 +127,8 @@ def train():
                         print(" ---------------- SAVING CHECKPOINT ------------------")
 
                         # Define the filename
-                        Epoch = int(step / 8500)
-                        file = ('Checkpoint%s' % Epoch)
+                        Epoch = int(step / (FLAGS.epoch_size / FLAGS.batch_size))
+                        file = ('Checkpoint_%s' % Epoch)
 
                         # Define the checkpoint file:
                         checkpoint_file = os.path.join(FLAGS.train_dir, file)

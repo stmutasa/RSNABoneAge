@@ -4,6 +4,8 @@ from __future__ import absolute_import  # import multi line and Absolute/Relativ
 from __future__ import division  # change the division operator to output float if dividing two integers
 from __future__ import print_function  # use the print function from python 3
 
+import time
+
 import BonaAge
 import numpy as np
 import tensorflow as tf
@@ -54,38 +56,45 @@ def train():
         # Initialize the saver
         saver = tf.train.Saver()
 
-        with tf.Session() as mon_sess:
+        while True:
 
-            # Initialize the variables
-            mon_sess.run(var_init)
+            with tf.Session() as mon_sess:
 
-            # Restore the learned variables
-            num = 1
-            restorer = tf.train.import_meta_graph('training/Checkpoint%s.meta' %num)
+                # Retreive the checkpoint
+                ckpt = tf.train.get_checkpoint_state('training/')
 
-            # Restore the graph
-            restorer.restore(mon_sess, 'training/Checkpoint%s' %num)
+                # Initialize the variables
+                mon_sess.run(var_init)
 
-            # Initialize the thread coordinator
-            coord = tf.train.Coordinator()
+                if ckpt and ckpt.model_checkpoint_path:
 
-            # Start the queue runners
-            threads = tf.train.start_queue_runners(sess=mon_sess, coord=coord)
+                    # Restore the learned variables
+                    restorer = tf.train.import_meta_graph(ckpt.model_checkpoint_path + '.meta')
 
-            # Initialize the step counter
-            step = 0
+                    # Restore the graph
+                    restorer.restore(mon_sess, ckpt.model_checkpoint_path)
 
-            # Set the max step count
-            max_steps = (FLAGS.epoch_size / FLAGS.batch_size) * FLAGS.num_epochs
+                    # Extract the epoch
+                    Epoch = ckpt.model_checkpoint_path.split('/')[-1].split('.')[0].split('_')[-1]
 
-            # Running values for MAE and Acc
-            total_MAE = []
-            total_ACC = []
+                # Initialize the thread coordinator
+                coord = tf.train.Coordinator()
 
-            try:
-                while step <= max_steps:
+                # Start the queue runners
+                threads = tf.train.start_queue_runners(sess=mon_sess, coord=coord)
 
-                    if step % FLAGS.print_interval == 0:  # This statement will print loss, step and other stuff
+                # Initialize the step counter
+                step = 0
+
+                # Set the max step count
+                max_steps = (FLAGS.epoch_size / FLAGS.batch_size) * FLAGS.num_epochs
+
+                # Running values for MAE and Acc
+                total_MAE = []
+                total_ACC = []
+
+                try:
+                    while step <= max_steps:
 
                         # Load some metrics for testing
                         predictions1, label1 = mon_sess.run([predictions2, labels2])
@@ -103,36 +112,39 @@ def train():
 
                         # Print the summary
                         np.set_printoptions(precision=1)  # use numpy to print only the first sig fig
-                        print('Eg. Predictions: Network(Real): %.1f (%.1f), %.1f (%.1f), %.1f (%.1f), %.1f (%.1f), '
-                              'MAE: %.2f Yrs, Train Accuracy: %s %%'
-                              % (predictions[0], label[0], predictions[1], label[1], predictions[2],
-                                 label[2], predictions[3], label[3], mae, acc))
+                        # print('Eg. Predictions: Network(Real): %.1f (%.1f), %.1f (%.1f), %.1f (%.1f), %.1f (%.1f), '
+                        #       'MAE: %.2f Yrs, Train Accuracy: %s %%'
+                        #       % (predictions[0], label[0], predictions[1], label[1], predictions[2],
+                        #          label[2], predictions[3], label[3], mae, acc))
 
                         # Increment step
                         step += 1
 
-            except tf.errors.OutOfRangeError:
-                print('Done with Training - Epoch limit reached')
+                except tf.errors.OutOfRangeError:
+                    print('Done with Training - Epoch limit reached')
 
-            finally:
+                finally:
 
-                # Calculate final MAE and ACC
-                accuracy = sum(total_ACC) / len(total_ACC)
-                Mean_AE = float(sum(total_MAE) / len(total_MAE))
+                    # Calculate final MAE and ACC
+                    accuracy = sum(total_ACC) / len(total_ACC)
+                    Mean_AE = float(sum(total_MAE) / len(total_MAE))
 
-                # Print the final accuracies and MAE
-                print('-' * 70)
-                print(
-                    '--------- TOTAL MEAN ABSOLUTE ERROR: %.3f, TOTAL ACCURACY: %.2f %% -------' % (Mean_AE, accuracy))
+                    # Print the final accuracies and MAE
+                    print('-' * 70)
+                    print(
+                        '--------- EPOCH: %s TOTAL MAE: %.3f, TOTAL ACCURACY: %.2f %% -------' % (Epoch, Mean_AE, accuracy))
 
-                # Stop threads when done
-                coord.request_stop()
+                    # Stop threads when done
+                    coord.request_stop()
 
-                # Wait for threads to finish before closing session
-                coord.join(threads, stop_grace_period_secs=60)
+                    # Wait for threads to finish before closing session
+                    coord.join(threads, stop_grace_period_secs=20)
 
-                # Shut down the session
-                mon_sess.close()
+                    # Shut down the session
+                    mon_sess.close()
+
+            print ('Sleeping')
+            time.sleep(70)
 
 
 def main(argv=None):  # pylint: disable=unused-argument
