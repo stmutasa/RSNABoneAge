@@ -11,7 +11,6 @@ _author_ = 'Simi'
 import os
 import tensorflow as tf
 import matplotlib.image as mpimg
-# from scipy import misc
 import pickle  # Module for serializing data and saving it to disk for use in another script
 import glob
 
@@ -21,20 +20,10 @@ FLAGS = tf.app.flags.FLAGS
 image_width = 256,  # """Width of the images.""")
 image_height = 256,  # """Height of the images.""")
 
-# Define the sizes of the data set
-num_training_examples = 2000  # """The amount of examples in the training set""")
-num_eval_examples = 100,  # """The amount of examples in the evaluation data set""")
-num_test_examples = 500  # """The amount of examples set aside for testing""")
-
 # Define filename for saving the image protobuffers
 # Raw data is jpegs numbered from 3128 to 7293 with some entries missing
 input_folder = 'data/raw'  # Folder where our raw inputs are stored""")
 records_file = 'data'  # """Where to store our records protobuf""")
-
-
-# Functions to define:
-# Write image and label to TFRecords
-# Read images and labels from protobuf: Later
 
 def _int64_feature(value):
     return tf.train.Feature(int64_list=tf.train.Int64List(value=[value]))
@@ -65,18 +54,15 @@ def read_labels(filename):
 
 
 def img_protobuf(images, labels, name):
-    """ Combines the images and labels given and saves them to a TFRecords protocol buffer
-        Will call this function one time each to save a training, validation and test set.
-        Combine the image[index] as an element in the nested dictionary
-        Args:
-            images: A Dictionary of our source images
-            labels: A 2D Dictionary with image id:{x,y,z} pairs """
-
-    das = 0
-
-    # Define the filenames for the training and validation sets
-    filenames = os.path.join(records_file, name + 'train' + '.tfrecords')
-    val_filenames = os.path.join(records_file, name + 'test' + '.tfrecords')
+    """
+    Combines the images and labels given and saves them to a TFRecords protocol buffer
+    Will call this function one time each to save a training, validation and test set.
+    Combine the image[index] as an element in the nested dictionary
+    :param images: A Dictionary of our source images
+    :param labels: A 2D Dictionary with image id:{x,y,z} pairs
+    :param name: The base filename
+    :return: Val_size: size of the validation set
+    """
 
     # First skip some images based on what we're training:
     if FLAGS.model == 1:
@@ -92,17 +78,31 @@ def img_protobuf(images, labels, name):
         age = 15
         gender = 'M'
 
-    # Define the class we will use to write the records to the .tfrecords protobuf. the init opens the file for writing
-    writer = tf.python_io.TFRecordWriter(filenames)
-    val_writer = tf.python_io.TFRecordWriter(val_filenames)
-    counter = 0  # for testing
-    val_size = 0
+    # Define the array we will use to write the records to the .tfrecords protobuf.
+    writer = []
+
+    # Initialize all the writers
+    for i in range (0, FLAGS.cross_validations):
+
+        # Define the filenames
+        filenames = os.path.join(records_file, name + str(i) + '.tfrecords')
+
+        # Open the file writer
+        writer.append(tf.python_io.TFRecordWriter(filenames))
+
+    # Variable to keep track of how many files we skipped
+    skipped = 0
+
+    # Variable to keep track of how many files were loaded
+    loaded = 0
 
     # Loop through each example and append the protobuf with the specified features
     for index, feature in labels.items():
 
-        # If the images don't exist
+        # If the images don't exist, skip
         if index not in images: continue
+
+        # Skip labels above 20 since they make no sense
         if float(labels[index]['ChrAge']) > 20 \
                 or float(labels[index]['Reading1']) > 20 \
                 or float(labels[index]['Reading2']) > 20:
@@ -113,22 +113,19 @@ def img_protobuf(images, labels, name):
 
         # Skip the gender not specified by the user
         if labels[index]['Gender'] != gender:
-            counter += 1
+            skipped += 1
             continue
 
-        # If the age doesn't fit
+        # If the age doesn't fit, skip
         elif age > 10:
             if float(labels[index]['ChrAge']) <= 10:
-                counter += 1
+                skipped += 1
                 continue
 
         elif age <= 10:
             if float(labels[index]['ChrAge']) >= 10:
-                counter += 1
+                skipped += 1
                 continue
-
-        # This image made it in increment the loaded image counter
-        das += 1
 
         # Create our dictionary of values to store: Added some dimensions values that may be useful later on
         data = {'data': images[index],
@@ -137,17 +134,22 @@ def img_protobuf(images, labels, name):
 
         example = tf.train.Example(features=tf.train.Features(feature=create_feature_dict(data, index)))
 
-        # Save every x images to the validation set
-        if das % 5 == 0:
-            val_writer.write(example.SerializeToString())
-            val_size += 1
-        else:
-            writer.write(
-                example.SerializeToString())  # Converts example to serialized string and writes it in the protobuf
+        # Calculate the file index as 0 - 4
+        index = loaded % 5
 
-    writer.close()  # Close the file after writing
-    val_writer.close()
-    print('Skipped: %s non-gender and age matched images, Validation size: %s' % (counter, val_size))
+        # This image made it in increment the loaded image counter
+        loaded += 1
+
+        # Save this index as a serialized string in the protobuf
+        writer[index].write(example.SerializeToString())
+
+    for i in range(0, FLAGS.cross_validations): writer[i].close()  # Close the file after writing
+
+    # Validation size is total divided by cross validations
+    val_size = loaded / FLAGS.cross_validations
+
+    # Print loading info
+    print('Skipped: %s non-gender and age matched images, Validation size: %s' % (skipped, val_size))
 
     return val_size
 
@@ -191,8 +193,17 @@ def load_protobuf(input_name, return_dict=True):
     # Will generate a random shuffle of the string tensors each epoch
     filedir = os.path.join(records_file, input_name)  # filenames for the protobuf
 
-    filenames = glob.glob(filedir + 'train' + '*.tfrecords')
+    filenames = glob.glob(filedir + '*.tfrecords')
 
+    # Define the filenames to remove
+    valid = ('data/bonageproto%s.tfrecords' %FLAGS.validation_file)
+    test = ('data/bonageproto%s.tfrecords' % FLAGS.test_file)
+
+    # Delete them from the filename queue
+    filenames.remove(valid)
+    filenames.remove(test)
+
+    # now load the remaining files
     filename_queue = tf.train.string_input_producer(filenames, num_epochs=None)
 
     reader = tf.TFRecordReader()  # Instantializes a TFRecordReader which outputs records from a TFRecords file
@@ -247,7 +258,7 @@ def load_protobuf(input_name, return_dict=True):
         return returned_dict
 
 
-def load_validation_set(input_name):
+def load_validation_set(input_name, valid=True):
     """
     Same as load protobuf() but loads the validation set
     :param input_name:
@@ -256,8 +267,18 @@ def load_validation_set(input_name):
 
     # Filenames for the protobuf
     filedir = os.path.join(records_file, input_name)  # filenames for the protobuf
-    filenames = glob.glob(filedir + 'test' + '*.tfrecords')
+
+    # Use Glob here
+    if valid: filenames = glob.glob(filedir + str(FLAGS.validation_file) + '*.tfrecords')
+    else: filenames = glob.glob(filedir + str(FLAGS.test_file) + '*.tfrecords')
+
+    # Define the filenames
+    valid = ('data/bonageproto%s.tfrecords' % FLAGS.validation_file)
+    test = ('data/bonageproto%s.tfrecords' % FLAGS.test_file)
+
+    # Load the filename queue
     filename_queue = tf.train.string_input_producer(filenames, shuffle=False)
+
     val_reader = tf.TFRecordReader()  # Instantializes a TFRecordReader which outputs records from a TFRecords file
     _, serialized_example = val_reader.read(
         filename_queue)  # Returns the next record (key:value) produced by the reader

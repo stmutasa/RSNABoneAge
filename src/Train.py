@@ -19,6 +19,11 @@ FLAGS = tf.app.flags.FLAGS
 tf.app.flags.DEFINE_string('train_dir', 'training/', """Directory to write event logs and save checkpoint files""")
 tf.app.flags.DEFINE_integer('num_epochs', 3000, """Number of epochs to run""")
 tf.app.flags.DEFINE_integer('model', 4, """1 Y=F, 2=OF, 3=YM, 4=OM""")
+
+tf.app.flags.DEFINE_integer('cross_validations', 5, "X fold cross validation hyperparameter")
+tf.app.flags.DEFINE_integer('validation_file', 3, "Which protocol buffer will be used fo validation")
+tf.app.flags.DEFINE_integer('test_file', 4, "Which protocol buffer will be used for testing")
+
 # Young girls = 206 (51), OG: 340/85, OM: 346/86, YM: 214/53
 tf.app.flags.DEFINE_integer('epoch_size', 346, """How many images were loaded""")
 tf.app.flags.DEFINE_integer('print_interval', 150, """How often to print a summary to console during training""")
