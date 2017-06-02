@@ -47,23 +47,27 @@ def forward_pass(images, phase_train1=True, bts=0):
     # Set Phase train variable
     phase_train = tf.Variable(phase_train1, trainable=False, dtype=tf.bool)
 
-    # The first convolutional layer
+    # The first convolutional layer. Dimensions: 4, 128, 128, 64
     conv1 = convolution('Conv1', images, 7, 64, phase_train=phase_train)
 
-    # The second convolutional layer
+    # The second convolutional layer    Dimensions: _, 64, 64, 256
     conv2 = convolution('Conv2', conv1, 5, 256, phase_train=phase_train)
 
-    # The third convolutional layer
-    conv3 = convolution('Conv3', conv2, 3, 128, phase_train=phase_train)
+    # inception layer, returns batchx64x64x256 (K*4 = 256)
+    inception1 = inception_layer('1stInception', conv2, 64, phase_train=phase_train)
 
-    # The 4th convolutional layer
+    # The third convolutional layer Dimensions: _,32, 32, 128
+    #conv3 = convolution('Conv3', conv2, 3, 128, phase_train=phase_train)
+    conv3 = convolution('Conv3', inception1, 3, 128, phase_train=phase_train)
+
+    # The 4th convolutional layer   Dimensions: _, 16, 16, 128
     conv4 = convolution('Conv4', conv3, 3, 128, phase_train=phase_train)
 
-    # The affine transform layer here: Output of conv4 is [batch, 14,14,128]
+    # The affine transform layer here: Dimensions: _, 16, 16, 128
     with tf.variable_scope('Transformer') as scope:
 
         # Set up the localisation network to calculate floc(u):
-        W1 = tf.get_variable('Weights1', shape=[14 * 14 * 128, 20],
+        W1 = tf.get_variable('Weights1', shape=[16 * 16 * 128, 20],
                              initializer=tf.truncated_normal_initializer(stddev=5e-2))
         B1 = tf.get_variable('Bias1', shape=[20], initializer=tf.truncated_normal_initializer(stddev=5e-2))
         W2 = tf.get_variable('Weights2', shape=[20, 6], initializer=tf.truncated_normal_initializer(stddev=5e-2))
@@ -79,17 +83,17 @@ def forward_pass(images, phase_train1=True, bts=0):
         B2 = tf.Variable(initial_value=initial, name='Bias2')
 
         # Define the two layers of the localisation network
-        H1 = tf.nn.tanh(tf.matmul(tf.zeros([batch_size, 14 * 14 * 128]), W1) + B1)
+        H1 = tf.nn.tanh(tf.matmul(tf.zeros([batch_size, 16 * 16 * 128]), W1) + B1)
         H2 = tf.nn.tanh(tf.matmul(H1, W2) + B2)
 
         # Define the output size to the original dimensions
-        output_size = (14, 14)
+        output_size = (16, 16)
         h_trans = st.transformer(conv4, H2, output_size)
 
-    # conv5 = convolution('Conv5', conv4, 3, 128, phase_train=phase_train)
+    # The 5th convolutional layer, Dimensions: _, 8, 8, 128
     conv5 = convolution('Conv5', h_trans, 1, 128, phase_train=phase_train)
 
-    # The Fc7 layer
+    # The Fc7 layer Dimensions: _, 128
     with tf.variable_scope('linear1') as scope:
         reshape = tf.reshape(conv5, [batch_size, -1])  # [batch, ?]
         dim = reshape.get_shape()[1].value  # Get columns for the matrix multiplication
@@ -99,7 +103,7 @@ def forward_pass(images, phase_train1=True, bts=0):
         if phase_train: fc7 = tf.nn.dropout(fc7, keep_prob=FLAGS.dropout_factor)  # Apply dropout here
         _activation_summary(fc7)
 
-    # The linear layer
+    # The linear layer Dimensions: 1x_
     with tf.variable_scope('linear2') as scope:
         W = tf.get_variable('Weights', shape=[128, 1], initializer=tf.truncated_normal_initializer(stddev=5e-2))
         tf.add_to_collection('weights', W)
@@ -123,7 +127,7 @@ def forward_pass(images, phase_train1=True, bts=0):
     return Logits, L2_loss  # Return whatever the name of the final logits variable is
 
 
-def convolution(scope, X, F, K, S=2, padding='VALID', phase_train=None):
+def convolution(scope, X, F, K, S=2, padding='SAME', phase_train=None):
     """
     This is a wrapper for convolutions
     :param scope:
@@ -165,6 +169,46 @@ def convolution(scope, X, F, K, S=2, padding='VALID', phase_train=None):
         _activation_summary(conv)
 
         return conv
+
+
+def inception_layer(scope, X, K, S=1, padding='SAME', phase_train=None):
+    """
+    This function implements an inception layer or "network within a network"
+    :param scope:
+    :param X:
+    :param K:
+    :param S:
+    :param padding:
+    :param phase_train:
+    :return:
+    """
+
+    # Set channel size based on input depth
+    C = X.get_shape().as_list()[3]
+
+    # Implement an inception layer here ----------------
+    with tf.variable_scope(scope) as scope:
+
+        # First branch, 1x1x64 convolution
+        inception1 = convolution('Inception1', X, 1, K, S, phase_train=phase_train)  # 64x64x64
+
+        # Second branch, 1x1 convolution then 3x3 convolution
+        inception2a = convolution('Inception2a', X, 1, 1, 1, phase_train=phase_train)  # 64x64x1
+        inception2 = convolution('Inception2', inception2a, 3, K, S, phase_train=phase_train)  # 64x64x64
+
+        # Third branch, 1x1 convolution then 5x5 convolution:
+        inception3a = convolution('Inception3a', X, 1, 1, 1, phase_train=phase_train)  # 64x64x1
+        inception3 = convolution('Inception3', inception3a, 5, K, S, phase_train=phase_train)  # 64x64x64
+
+        # Fourth branch, max pool then 1x1 conv:
+        inception4a = tf.nn.max_pool(X, [1, 3, 3, 1], [1, 1, 1, 1], padding)  # 64x64x256
+        inception4 = convolution('Inception4', inception4a, 1, K, S, phase_train=phase_train)  # 64x64x64
+
+        # Concatenate the results for dimension of 64,64,256
+        inception = tf.concat([tf.concat([tf.concat([inception1, inception2], axis=3),
+                                          inception3], axis=3), inception4], axis=3)
+
+        return inception
 
 
 def total_loss(logits, labels):

@@ -23,6 +23,8 @@ tf.app.flags.DEFINE_integer('num_epochs', 1, """Number of epochs to run""")
 tf.app.flags.DEFINE_integer('epoch_size', 51, """How many images were loaded""")
 tf.app.flags.DEFINE_integer('print_interval', 1, """How often to print a summary to console during training""")
 tf.app.flags.DEFINE_integer('batch_size', 4, """Number of images to process in a batch.""")
+tf.app.flags.DEFINE_integer('validation_file', 3, "Which protocol buffer will be used fo validation")
+tf.app.flags.DEFINE_integer('test_file', 4, "Which protocol buffer will be used for testing")
 
 # Hyperparameters:
 tf.app.flags.DEFINE_float('dropout_factor', 0.5, """ p value for the dropout layer""")
