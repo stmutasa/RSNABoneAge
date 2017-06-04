@@ -20,7 +20,7 @@ FLAGS = tf.app.flags.FLAGS
 tf.app.flags.DEFINE_string('train_dir', 'training/', """Directory to write event logs and save checkpoint files""")
 tf.app.flags.DEFINE_integer('model', 1, """1 Y=F, 2=OF, 3=YM, 4=OM""")
 tf.app.flags.DEFINE_integer('num_epochs', 1, """Number of epochs to run""")
-tf.app.flags.DEFINE_integer('epoch_size', 51, """How many images were loaded""")
+tf.app.flags.DEFINE_integer('epoch_size', 32, """How many images were loaded""")
 tf.app.flags.DEFINE_integer('print_interval', 1, """How often to print a summary to console during training""")
 tf.app.flags.DEFINE_integer('batch_size', 4, """Number of images to process in a batch.""")
 tf.app.flags.DEFINE_integer('validation_file', 3, "Which protocol buffer will be used fo validation")
@@ -31,13 +31,13 @@ tf.app.flags.DEFINE_float('dropout_factor', 0.5, """ p value for the dropout lay
 tf.app.flags.DEFINE_float('l2_gamma', 1e-4, """ The gamma value for regularization loss""")
 
 # Define a custom training class
-def train():
+def test():
     """ Train our network for a number of steps
     The 'with' statement tells python to try and execute the following code, and utilize a custom defined __exit__
     function once it is done or it fails """
 
     # Makes this the default graph where all ops will be added
-    with tf.Graph().as_default():
+    with tf.Graph().as_default(), tf.device('/cpu:0'):
 
         # Get a dictionary of our images, id's, and labels here
         images, validation, val_batch = BonaAge.inputs(skip=True)
@@ -146,11 +146,11 @@ def train():
                     mon_sess.close()
 
             print ('Sleeping')
-            time.sleep(70)
+            time.sleep(110)
 
 
 def main(argv=None):  # pylint: disable=unused-argument
-    train()
+    test()
 
 
 if __name__ == '__main__':

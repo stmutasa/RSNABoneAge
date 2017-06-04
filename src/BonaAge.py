@@ -50,15 +50,19 @@ def forward_pass(images, phase_train1=True, bts=0):
     # The first convolutional layer. Dimensions: 4, 128, 128, 64
     conv1 = convolution('Conv1', images, 7, 64, phase_train=phase_train)
 
-    # The second convolutional layer    Dimensions: _, 64, 64, 256
-    conv2 = convolution('Conv2', conv1, 5, 256, phase_train=phase_train)
+    # First inception layer, 128x128x128
+    inception1 = inception_layer('1stInception', conv1, 32, phase_train=phase_train)
 
-    # inception layer, returns batchx64x64x256 (K*4 = 256)
-    inception1 = inception_layer('1stInception', conv2, 64, phase_train=phase_train)
+    # The second convolutional layer    Dimensions: _, 64, 64, 256
+    # conv2 = convolution('Conv2', conv1, 5, 256, phase_train=phase_train)
+    conv2 = convolution('Conv2', inception1, 5, 256, phase_train=phase_train)
+
+    # Second inception layer, returns batchx64x64x256 (K*4 = 256)
+    inception2 = inception_layer('2ndInception', conv2, 64, phase_train=phase_train)
 
     # The third convolutional layer Dimensions: _,32, 32, 128
     #conv3 = convolution('Conv3', conv2, 3, 128, phase_train=phase_train)
-    conv3 = convolution('Conv3', inception1, 3, 128, phase_train=phase_train)
+    conv3 = convolution('Conv3', inception2, 3, 128, phase_train=phase_train)
 
     # The 4th convolutional layer   Dimensions: _, 16, 16, 128
     conv4 = convolution('Conv4', conv3, 3, 128, phase_train=phase_train)
@@ -100,7 +104,7 @@ def forward_pass(images, phase_train1=True, bts=0):
         weights = tf.get_variable('weights', shape=[dim, 128], initializer=tf.truncated_normal_initializer(stddev=5e-2))
         tf.add_to_collection('weights', weights)
         fc7 = tf.nn.relu(tf.matmul(reshape, weights), name=scope.name)  # returns mat of size [batch x 128
-        if phase_train: fc7 = tf.nn.dropout(fc7, keep_prob=FLAGS.dropout_factor)  # Apply dropout here
+        if phase_train1: fc7 = tf.nn.dropout(fc7, keep_prob=FLAGS.dropout_factor)  # Apply dropout here
         _activation_summary(fc7)
 
     # The linear layer Dimensions: 1x_
@@ -157,13 +161,19 @@ def convolution(scope, X, F, K, S=2, padding='SAME', phase_train=None):
         # Perform the actual convolution
         conv = tf.nn.conv2d(X, kernel, [1, S, S, 1], padding=padding)  # Create a 2D tensor with BATCH_SIZE rows
 
-        # # Apply the batch normalization. Updates weights during training phase only
-        # norm = tf.cond(phase_train,
-        #                lambda: tf.contrib.layers.batch_norm(conv, decay=0.999, is_training=True, reuse=None),
-        #                lambda: tf.contrib.layers.batch_norm(conv, is_training=False, reuse=True, scope='norm'))
+        # Apply the batch normalization. Updates weights during training phase only
+        norm = tf.cond(phase_train,
+                lambda: tf.contrib.layers.batch_norm(conv, activation_fn=None, center=True, scale=True,
+                                                     updates_collections=None, is_training=True, reuse=None,
+                                                     scope=scope, decay=0.9, epsilon=1e-5),
+                lambda: tf.contrib.layers.batch_norm(conv, activation_fn=None, center=True, scale=True,
+                                                     updates_collections=None, is_training=False, reuse=True,
+                                                     scope=scope, decay=0.9, epsilon=1e-5))
+
+
 
         # Relu activation
-        conv = tf.nn.relu(conv, name=scope.name)
+        conv = tf.nn.relu(norm, name=scope.name)
 
         # Create a histogram/scalar summary of the conv1 layer
         _activation_summary(conv)

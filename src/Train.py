@@ -18,16 +18,16 @@ FLAGS = tf.app.flags.FLAGS
 # Define some of the immutable variables
 tf.app.flags.DEFINE_string('train_dir', 'training/', """Directory to write event logs and save checkpoint files""")
 tf.app.flags.DEFINE_integer('num_epochs', 3000, """Number of epochs to run""")
-tf.app.flags.DEFINE_integer('model', 4, """1 Y=F, 2=OF, 3=YM, 4=OM""")
+tf.app.flags.DEFINE_integer('model', 1, """1 Y=F, 2=OF, 3=YM, 4=OM""")
 
-tf.app.flags.DEFINE_integer('cross_validations', 5, "X fold cross validation hyperparameter")
+tf.app.flags.DEFINE_integer('cross_validations', 8, "X fold cross validation hyperparameter")
 tf.app.flags.DEFINE_integer('validation_file', 3, "Which protocol buffer will be used fo validation")
 tf.app.flags.DEFINE_integer('test_file', 4, "Which protocol buffer will be used for testing")
 
-# Young girls = 206 (51), OG: 340/85, OM: 346/86, YM: 214/53
-tf.app.flags.DEFINE_integer('epoch_size', 346, """How many images were loaded""")
+# Young girls = 258, OG: 340/85, OM: 346/86, YM: 214/53
+tf.app.flags.DEFINE_integer('epoch_size', 226, """How many images were loaded""")
 tf.app.flags.DEFINE_integer('print_interval', 150, """How often to print a summary to console during training""")
-tf.app.flags.DEFINE_integer('checkpoint_steps', 3500, """How many STEPS to wait before saving a checkpoint""")
+tf.app.flags.DEFINE_integer('checkpoint_steps', 2250, """How many STEPS to wait before saving a checkpoint""")
 tf.app.flags.DEFINE_integer('batch_size', 4, """Number of images to process in a batch.""")
 
 # Hyperparameters:
