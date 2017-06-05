@@ -51,21 +51,23 @@ def forward_pass(images, phase_train1=True, bts=0):
     conv1 = convolution('Conv1', images, 7, 64, phase_train=phase_train)
 
     # First inception layer, 128x128x128
-    inception1 = inception_layer('1stInception', conv1, 32, phase_train=phase_train)
+    #inception1 = inception_layer('1stInception', conv1, 32, phase_train=phase_train)
 
     # The second convolutional layer    Dimensions: _, 64, 64, 256
     # conv2 = convolution('Conv2', conv1, 5, 256, phase_train=phase_train)
-    conv2 = convolution('Conv2', inception1, 5, 256, phase_train=phase_train)
+    conv2 = convolution('Conv2', conv1, 5, 256, phase_train=phase_train)
 
     # Second inception layer, returns batchx64x64x256 (K*4 = 256)
-    inception2 = inception_layer('2ndInception', conv2, 64, phase_train=phase_train)
+    # inception2 = inception_layer('2ndInception', conv2, 64, phase_train=phase_train)
 
     # The third convolutional layer Dimensions: _,32, 32, 128
     #conv3 = convolution('Conv3', conv2, 3, 128, phase_train=phase_train)
-    conv3 = convolution('Conv3', inception2, 3, 128, phase_train=phase_train)
+    conv3 = convolution('Conv3', conv2, 3, 128, phase_train=phase_train)
+
+    inception3 = inception_layer('3rdInception', conv3, 64, phase_train=phase_train)
 
     # The 4th convolutional layer   Dimensions: _, 16, 16, 128
-    conv4 = convolution('Conv4', conv3, 3, 128, phase_train=phase_train)
+    conv4 = convolution('Conv4', inception3, 3, 128, phase_train=phase_train)
 
     # The affine transform layer here: Dimensions: _, 16, 16, 128
     with tf.variable_scope('Transformer') as scope:

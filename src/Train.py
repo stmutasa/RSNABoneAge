@@ -26,9 +26,9 @@ tf.app.flags.DEFINE_integer('test_file', 4, "Which protocol buffer will be used 
 
 # Young girls = 258, OG: 340/85, OM: 346/86, YM: 214/53
 tf.app.flags.DEFINE_integer('epoch_size', 226, """How many images were loaded""")
-tf.app.flags.DEFINE_integer('print_interval', 150, """How often to print a summary to console during training""")
-tf.app.flags.DEFINE_integer('checkpoint_steps', 2250, """How many STEPS to wait before saving a checkpoint""")
-tf.app.flags.DEFINE_integer('batch_size', 4, """Number of images to process in a batch.""")
+tf.app.flags.DEFINE_integer('print_interval', 20, """How often to print a summary to console during training""")
+tf.app.flags.DEFINE_integer('checkpoint_steps', 280, """How many STEPS to wait before saving a checkpoint""")
+tf.app.flags.DEFINE_integer('batch_size', 32, """Number of images to process in a batch.""")
 
 # Hyperparameters:
 # For the old girls run: lr = 1e-4, dropout = 0.5, L2 = 1e-3, moving decay = 0.999, lr decay: 0.98, steps = 340
@@ -37,7 +37,7 @@ tf.app.flags.DEFINE_integer('batch_size', 4, """Number of images to process in a
 # young male run: l2 = 0.001, lr = 0.001, moving decay = 0.999, dropout = 0.5. lr decay 0.99, lr steps 200
 tf.app.flags.DEFINE_float('dropout_factor', 0.5, """ p value for the dropout layer""")
 tf.app.flags.DEFINE_float('l2_gamma', 1e-4, """ The gamma value for regularization loss""")
-tf.app.flags.DEFINE_float('learning_rate', 1e-4, """Initial learning rate""")
+tf.app.flags.DEFINE_float('learning_rate', 1e-3, """Initial learning rate""")
 tf.app.flags.DEFINE_float('lr_decay', 0.98, """The base factor for exp learning rate decay""")
 tf.app.flags.DEFINE_integer('lr_steps', 206, """ The number of steps until we decay the learning rate""")
 tf.app.flags.DEFINE_float('moving_avg_decay', 0.999, """ The decay rate for the moving average tracker""")

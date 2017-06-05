@@ -22,7 +22,7 @@ tf.app.flags.DEFINE_integer('model', 1, """1 Y=F, 2=OF, 3=YM, 4=OM""")
 tf.app.flags.DEFINE_integer('num_epochs', 1, """Number of epochs to run""")
 tf.app.flags.DEFINE_integer('epoch_size', 32, """How many images were loaded""")
 tf.app.flags.DEFINE_integer('print_interval', 1, """How often to print a summary to console during training""")
-tf.app.flags.DEFINE_integer('batch_size', 4, """Number of images to process in a batch.""")
+tf.app.flags.DEFINE_integer('batch_size', 32, """Number of images to process in a batch.""")
 tf.app.flags.DEFINE_integer('validation_file', 3, "Which protocol buffer will be used fo validation")
 tf.app.flags.DEFINE_integer('test_file', 4, "Which protocol buffer will be used for testing")
 
@@ -146,7 +146,7 @@ def test():
                     mon_sess.close()
 
             print ('Sleeping')
-            time.sleep(110)
+            time.sleep(60)
 
 
 def main(argv=None):  # pylint: disable=unused-argument
