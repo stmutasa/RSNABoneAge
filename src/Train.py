@@ -31,8 +31,8 @@ tf.app.flags.DEFINE_integer('checkpoint_steps', 280, """How many STEPS to wait b
 tf.app.flags.DEFINE_integer('batch_size', 32, """Number of images to process in a batch.""")
 
 # Hyperparameters:
-# For the old girls run: lr = 1e-4, dropout = 0.5, L2 = 1e-3, moving decay = 0.999, lr decay: 0.98, steps = 340
-# Young girls run (0.630):l2 = 1e-4, lr = 1e-3, Lr decay = 0.98 @ 206, moving decay = 0.999, dropout = 0.3. beta: 0.9 and 0.999:
+# For the old girls run (0.5 with R3): lr = 1e-4, dropout = 0.5, L2 = 1e-3, moving decay = 0.999, lr decay: 0.98, steps = 340
+# Young girls run (0.630 with I3):l2 = 1e-4, lr = 1e-3, Lr decay = 0.98 @ 206, moving decay = 0.999, dropout = 0.3. beta: 0.9 and 0.999:
 # Old male run: l2 = 1e-4, lr = 1e-4, moving decay = 0.999, dropout = 0.5. lr decay 0.98, lr steps 346
 # young male run: l2 = 0.001, lr = 0.001, moving decay = 0.999, dropout = 0.5. lr decay 0.99, lr steps 200
 tf.app.flags.DEFINE_float('dropout_factor', 0.3, """ p value for the dropout layer""")

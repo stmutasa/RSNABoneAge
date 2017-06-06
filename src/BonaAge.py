@@ -50,21 +50,13 @@ def forward_pass(images, phase_train1=True, bts=0):
     # The first convolutional layer. Dimensions: 4, 128, 128, 64
     conv1 = convolution('Conv1', images, 7, 64, phase_train=phase_train)
 
-    # First inception layer, 128x128x128
-    #inception1 = inception_layer('1stInception', conv1, 32, phase_train=phase_train)
-
-    # The second convolutional layer    Dimensions: _, 64, 64, 256
-    # conv2 = convolution('Conv2', conv1, 5, 256, phase_train=phase_train)
+    # The second convolutional layer    Dimensions: _, 64, 64, 128
     conv2 = convolution('Conv2', conv1, 5, 128, phase_train=phase_train)
 
-    # Second inception layer, returns batchx64x64x256 (K*4 = 256)
-    # inception2 = inception_layer('2ndInception', conv2, 64, phase_train=phase_train)
-
-    # The third convolutional layer Dimensions: _,32, 32, 128
-    #conv3 = convolution('Conv3', conv2, 3, 128, phase_train=phase_train)
+    # The third convolutional layer Dimensions: _,32, 32, 256
     conv3 = convolution('Conv3', conv2, 3, 256, phase_train=phase_train)
 
-    # Insert inception/residual layer here
+    # Insert inception/residual layer here. Output is same dimensions as previous layer
     # inception3 = inception_layer('3rdInception', conv3, 64, phase_train=phase_train)
     residual = residual_layer('Residual', conv3, 3, 64, 'SAME', phase_train)
 
@@ -139,13 +131,12 @@ def convolution(scope, X, F, K, S=2, padding='SAME', phase_train=None):
     """
     This is a wrapper for convolutions
     :param scope:
-    :param X:
-    :param C:
-    :param F:
-    :param K:
-    :param S:
+    :param X: Output of the prior layer
+    :param F: Convolutional filter size
+    :param K: Number of feature maps
+    :param S: Stride
     :param padding:
-    :param phase_train:
+    :param phase_train: For batch norm implementation
     :return:
     """
 
@@ -189,16 +180,13 @@ def inception_layer(scope, X, K, S=1, padding='SAME', phase_train=None):
     """
     This function implements an inception layer or "network within a network"
     :param scope:
-    :param X:
-    :param K:
-    :param S:
+    :param X: Output of the previous layer
+    :param K: Feature maps in the inception layer (will be multiplied by 4 during concatenation)
+    :param S: Stride
     :param padding:
-    :param phase_train:
-    :return:
+    :param phase_train: For batch norm implementation
+    :return: the inception layer output after concat
     """
-
-    # Set channel size based on input depth
-    C = X.get_shape().as_list()[3]
 
     # Implement an inception layer here ----------------
     with tf.variable_scope(scope) as scope:
@@ -227,15 +215,14 @@ def inception_layer(scope, X, K, S=1, padding='SAME', phase_train=None):
 
 def residual_layer(scope, X, F, K, padding='SAME', phase_train=None):
     """
-    This is a wrapper for implementing a residual layer
+    This is a wrapper for implementing a hybrid residual layer with inception layer as F(x)
     :param scope:
-    :param X:
-    :param C:
-    :param F:
-    :param K:
-    :param S:
+    :param X: Output of the previous layer
+    :param F: Dimensions of the second convolution in F(x) - the non inception layer one
+    :param K: Feature maps in the inception layer (will be multiplied by 4 during concatenation)
+    :param S: Stride
     :param padding:
-    :param phase_train:
+    :param phase_train: For batch norm implementation
     :return:
     """
 
@@ -248,11 +235,11 @@ def residual_layer(scope, X, F, K, padding='SAME', phase_train=None):
         # The first layer is an inception layer
         conv1 = inception_layer(scope, X, K, 1, phase_train=phase_train)
 
-        # Define the Kernel. Can use Xavier init: contrib.layers.xavier_initializer())
+        # Define the Kernel for conv2. Which is a normal conv layer
         kernel = tf.get_variable('Weights', shape=[F, F, C, K*4],
                                  initializer=tf.truncated_normal_initializer(stddev=5e-2))
 
-        # Add to the weights collection
+        # Add this kernel to the weights collection for L2 reg
         tf.add_to_collection('weights', kernel)
 
         # Perform the actual convolution
