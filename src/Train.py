@@ -17,14 +17,14 @@ FLAGS = tf.app.flags.FLAGS
 
 # Define some of the immutable variables
 tf.app.flags.DEFINE_string('train_dir', 'training/', """Directory to write event logs and save checkpoint files""")
-tf.app.flags.DEFINE_integer('num_epochs', 3000, """Number of epochs to run""")
+tf.app.flags.DEFINE_integer('num_epochs', 5000, """Number of epochs to run""")
 tf.app.flags.DEFINE_integer('model', 1, """1 Y=F, 2=OF, 3=YM, 4=OM""")
 
 tf.app.flags.DEFINE_integer('cross_validations', 8, "X fold cross validation hyperparameter")
 tf.app.flags.DEFINE_integer('validation_file', 3, "Which protocol buffer will be used fo validation")
 tf.app.flags.DEFINE_integer('test_file', 4, "Which protocol buffer will be used for testing")
 
-# Young girls = 258, OG: 340/85, OM: 346/86, YM: 214/53
+# Young girls = 258, OG: 425, OM: 432, YM: 267
 tf.app.flags.DEFINE_integer('epoch_size', 226, """How many images were loaded""")
 tf.app.flags.DEFINE_integer('print_interval', 20, """How often to print a summary to console during training""")
 tf.app.flags.DEFINE_integer('checkpoint_steps', 280, """How many STEPS to wait before saving a checkpoint""")
@@ -32,10 +32,10 @@ tf.app.flags.DEFINE_integer('batch_size', 32, """Number of images to process in 
 
 # Hyperparameters:
 # For the old girls run: lr = 1e-4, dropout = 0.5, L2 = 1e-3, moving decay = 0.999, lr decay: 0.98, steps = 340
-# Young girls run:l2 = 0.001, lr = 0.001, Lr decay = 0.99 @ 200, moving decay = 0.999, dropout = 0.5. beta: 0.9 and 0.999:
+# Young girls run (0.630):l2 = 1e-4, lr = 1e-3, Lr decay = 0.98 @ 206, moving decay = 0.999, dropout = 0.3. beta: 0.9 and 0.999:
 # Old male run: l2 = 1e-4, lr = 1e-4, moving decay = 0.999, dropout = 0.5. lr decay 0.98, lr steps 346
 # young male run: l2 = 0.001, lr = 0.001, moving decay = 0.999, dropout = 0.5. lr decay 0.99, lr steps 200
-tf.app.flags.DEFINE_float('dropout_factor', 0.5, """ p value for the dropout layer""")
+tf.app.flags.DEFINE_float('dropout_factor', 0.3, """ p value for the dropout layer""")
 tf.app.flags.DEFINE_float('l2_gamma', 1e-4, """ The gamma value for regularization loss""")
 tf.app.flags.DEFINE_float('learning_rate', 1e-3, """Initial learning rate""")
 tf.app.flags.DEFINE_float('lr_decay', 0.98, """The base factor for exp learning rate decay""")

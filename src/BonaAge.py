@@ -55,19 +55,21 @@ def forward_pass(images, phase_train1=True, bts=0):
 
     # The second convolutional layer    Dimensions: _, 64, 64, 256
     # conv2 = convolution('Conv2', conv1, 5, 256, phase_train=phase_train)
-    conv2 = convolution('Conv2', conv1, 5, 256, phase_train=phase_train)
+    conv2 = convolution('Conv2', conv1, 5, 128, phase_train=phase_train)
 
     # Second inception layer, returns batchx64x64x256 (K*4 = 256)
     # inception2 = inception_layer('2ndInception', conv2, 64, phase_train=phase_train)
 
     # The third convolutional layer Dimensions: _,32, 32, 128
     #conv3 = convolution('Conv3', conv2, 3, 128, phase_train=phase_train)
-    conv3 = convolution('Conv3', conv2, 3, 128, phase_train=phase_train)
+    conv3 = convolution('Conv3', conv2, 3, 256, phase_train=phase_train)
 
-    inception3 = inception_layer('3rdInception', conv3, 64, phase_train=phase_train)
+    # Insert inception/residual layer here
+    # inception3 = inception_layer('3rdInception', conv3, 64, phase_train=phase_train)
+    residual = residual_layer('Residual', conv3, 3, 64, 'SAME', phase_train)
 
     # The 4th convolutional layer   Dimensions: _, 16, 16, 128
-    conv4 = convolution('Conv4', inception3, 3, 128, phase_train=phase_train)
+    conv4 = convolution('Conv4', residual, 3, 128, phase_train=phase_train)
 
     # The affine transform layer here: Dimensions: _, 16, 16, 128
     with tf.variable_scope('Transformer') as scope:
@@ -221,6 +223,60 @@ def inception_layer(scope, X, K, S=1, padding='SAME', phase_train=None):
                                           inception3], axis=3), inception4], axis=3)
 
         return inception
+
+
+def residual_layer(scope, X, F, K, padding='SAME', phase_train=None):
+    """
+    This is a wrapper for implementing a residual layer
+    :param scope:
+    :param X:
+    :param C:
+    :param F:
+    :param K:
+    :param S:
+    :param padding:
+    :param phase_train:
+    :return:
+    """
+
+    # Set channel size based on input depth
+    C = X.get_shape().as_list()[3]
+
+    # Set the scope. Implement a residual layer below: Conv-relu-conv-residual-relu
+    with tf.variable_scope(scope) as scope:
+
+        # The first layer is an inception layer
+        conv1 = inception_layer(scope, X, K, 1, phase_train=phase_train)
+
+        # Define the Kernel. Can use Xavier init: contrib.layers.xavier_initializer())
+        kernel = tf.get_variable('Weights', shape=[F, F, C, K*4],
+                                 initializer=tf.truncated_normal_initializer(stddev=5e-2))
+
+        # Add to the weights collection
+        tf.add_to_collection('weights', kernel)
+
+        # Perform the actual convolution
+        conv2 = tf.nn.conv2d(conv1, kernel, [1, 1, 1, 1], padding=padding)  # Create a 2D tensor with BATCH_SIZE rows
+
+        # Add in the residual here
+        residual = tf.add(conv2, X)
+
+        # Apply the batch normalization. Updates weights during training phase only
+        norm = tf.cond(phase_train,
+                       lambda: tf.contrib.layers.batch_norm(residual, activation_fn=None, center=True, scale=True,
+                                                            updates_collections=None, is_training=True, reuse=None,
+                                                            scope=scope, decay=0.9, epsilon=1e-5),
+                       lambda: tf.contrib.layers.batch_norm(residual, activation_fn=None, center=True, scale=True,
+                                                            updates_collections=None, is_training=False, reuse=True,
+                                                            scope=scope, decay=0.9, epsilon=1e-5))
+
+        # Relu activation
+        conv = tf.nn.relu(norm, name=scope.name)
+
+        # Create a histogram/scalar summary of the conv1 layer
+        _activation_summary(conv)
+
+        return conv
 
 
 def total_loss(logits, labels):

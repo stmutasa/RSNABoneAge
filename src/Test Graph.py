@@ -27,7 +27,7 @@ tf.app.flags.DEFINE_integer('validation_file', 3, "Which protocol buffer will be
 tf.app.flags.DEFINE_integer('test_file', 4, "Which protocol buffer will be used for testing")
 
 # Hyperparameters:
-tf.app.flags.DEFINE_float('dropout_factor', 0.5, """ p value for the dropout layer""")
+tf.app.flags.DEFINE_float('dropout_factor', 0.3, """ p value for the dropout layer""")
 tf.app.flags.DEFINE_float('l2_gamma', 1e-4, """ The gamma value for regularization loss""")
 
 # Define a custom training class
@@ -145,6 +145,10 @@ def test():
                     # Shut down the session
                     mon_sess.close()
 
+            # Break if this is the final checkpoint
+            if 'Final' in Epoch: break
+
+            # Otherwise sleep for X seconds before repeating
             print ('Sleeping')
             time.sleep(60)
 
