@@ -24,10 +24,9 @@ tf.app.flags.DEFINE_integer('epoch_size', 269, """OF: 508""")
 tf.app.flags.DEFINE_integer('print_interval', 1, """How often to print a summary to console during training""")
 tf.app.flags.DEFINE_integer('batch_size', 32, """Number of images to process in a batch.""")
 tf.app.flags.DEFINE_integer('validation_file', 3, "Which protocol buffer will be used fo validation")
-tf.app.flags.DEFINE_integer('test_file', 4, "Which protocol buffer will be used for testing")
 
 # Hyperparameters:
-tf.app.flags.DEFINE_float('dropout_factor', 0.3, """ p value for the dropout layer""")
+tf.app.flags.DEFINE_float('dropout_factor', 0.5, """ p value for the dropout layer""")
 tf.app.flags.DEFINE_float('l2_gamma', 1e-4, """ The gamma value for regularization loss""")
 
 # Define a custom training class
@@ -43,10 +42,10 @@ def test():
         images, validation = BonaAge.inputs(skip=True)
 
         # Build a graph that computes the prediction from the inference model (Forward pass)
-        logits, l2loss = BonaAge.forward_pass(validation['image'], phase_train1=False)
+        logits, _ = BonaAge.forward_pass(validation['image'], phase_train1=False)
 
         # Make our ground truth the real age since the bone ages are normal
-        avg_label = tf.transpose(tf.divide(images['reading'], 19))
+        avg_label = tf.transpose(tf.divide(validation['reading'], 19))
 
         # Get some metrics
         predictions2 = tf.transpose(tf.multiply(logits, 19))
@@ -102,7 +101,7 @@ def test():
                         predictions1, label1 = mon_sess.run([predictions2, labels2])
 
                         # Output the summary
-                        predictions = predictions1.astype(np.float)*19
+                        predictions = predictions1.astype(np.float)
                         label = label1.astype(np.float)
 
                         # Calculate the accuracy
@@ -113,7 +112,7 @@ def test():
                         total_MAE.append(mae)
 
                         # Print the summary
-                        np.set_printoptions(precision=1)  # use numpy to print only the first sig fig
+                        np.set_printoptions(precision=3)  # use numpy to print only the first sig fig
                         print('Eg. Predictions: Network(Real): %.1f (%.1f), %.1f (%.1f), %.1f (%.1f), %.1f (%.1f), '
                               'MAE: %.2f Yrs, Train Accuracy: %s %%'
                               % (predictions[0], label[0], predictions[1], label[1], predictions[2],

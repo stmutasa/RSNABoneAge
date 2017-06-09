@@ -54,8 +54,11 @@ def forward_pass(images, phase_train1=True, bts=0):
     # The second convolutional layer    Dimensions: _, 64, 64, 128
     conv2 = convolution('Conv2', conv1, 5, 128, phase_train=phase_train)
 
+    # Inception layer
+    inception = inception_layer('Inception', conv2, 32, phase_train=phase_train)
+
     # The third convolutional layer Dimensions: _,32, 32, 256
-    conv3 = convolution('Conv3', conv2, 3, 256, phase_train=phase_train)
+    conv3 = convolution('Conv3', inception, 3, 256, phase_train=phase_train)
 
     # Insert inception/residual layer here. Output is same dimensions as previous layer
     residual1 = residual_layer('Residual', conv3, 3, 64, 'SAME', phase_train)

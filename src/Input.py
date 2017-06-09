@@ -209,7 +209,7 @@ def load_protobuf(input_name, return_dict=True):
     features = tf.parse_single_example(serialized_example, features=feature_dict)
 
     # Change the raw image data to 8 bit integers first
-    image = tf.decode_raw(features['data'], tf.int16)  # Set this examples image to a blank tensor with integer data
+    image = tf.decode_raw(features['data'], tf.float32)  # Set this examples image to a blank tensor with integer data
     image = tf.reshape(image, shape=[512, 512, 1])  # Set the dimensions of the image ( must equal input dims here)
 
     # Cast all our data to 32 bit floating point units. Cannot convert string to number unless you use that function
@@ -229,6 +229,9 @@ def load_protobuf(input_name, return_dict=True):
     # Resize images
     image = tf.image.resize_images(image, [284, 284])
     image = tf.random_crop(image, [256, 256, 1])  # Random crop the image to a box 80% of the size
+
+    # pre proc image:
+    image = tf.image.per_image_standardization(image=image)
 
     # create float summary image
     tf.summary.image('Normalized Image', tf.reshape(image, shape=[1, 256, 256, 1]), max_outputs=4)
@@ -282,7 +285,7 @@ def load_validation_set(input_name, valid=True):
     features = tf.parse_single_example(serialized_example, features=feature_dict)
 
     # Change the raw image data to 8 bit integers first
-    image = tf.decode_raw(features['data'], tf.int16)  # Set this examples image to a blank tensor with integer data
+    image = tf.decode_raw(features['data'], tf.float32)  # Set this examples image to a blank tensor with integer data
     image = tf.reshape(image, shape=[512, 512, 1])  # Set the dimensions of the image ( must equal input dims here)
 
     # Cast all our data to 32 bit floating point units. Cannot convert string to number unless you use that function
@@ -291,8 +294,11 @@ def load_validation_set(input_name, valid=True):
     reading = tf.string_to_number(features['reading'], tf.float32)
     age = tf.string_to_number(features['age'], tf.float32)
 
-    # # Resize images
+    # Resize images
     image = tf.image.resize_images(image, [256, 256])
+
+    # pre proc image:
+    image = tf.image.per_image_standardization(image=image)
 
     # create float summary image
     tf.summary.image('Normalized Validation', tf.reshape(image, shape=[1, 256, 256, 1]), max_outputs=4)

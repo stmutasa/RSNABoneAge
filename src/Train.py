@@ -17,7 +17,7 @@ FLAGS = tf.app.flags.FLAGS
 
 # Define some of the immutable variables
 tf.app.flags.DEFINE_string('train_dir', 'training/', """Directory to write event logs and save checkpoint files""")
-tf.app.flags.DEFINE_integer('num_epochs', 5000, """Number of epochs to run""")
+tf.app.flags.DEFINE_integer('num_epochs', 3000, """Number of epochs to run""")
 tf.app.flags.DEFINE_integer('model', 1, """1=YF, 2=OF, 3=YM, 4=OM""")
 
 tf.app.flags.DEFINE_integer('cross_validations', 8, "X fold cross validation hyperparameter")
@@ -35,7 +35,7 @@ tf.app.flags.DEFINE_integer('batch_size', 32, """Number of images to process in 
 # Young girls run (0.630 with I3):l2 = 1e-4, lr = 1e-3, Lr decay = 0.98 @ 206, moving decay = 0.999, dropout = 0.3. beta: 0.9 and 0.999:
 # Old male run: l2 = 1e-4, lr = 1e-4, moving decay = 0.999, dropout = 0.5. lr decay 0.98, lr steps 346
 # young male run: l2 = 0.001, lr = 0.001, moving decay = 0.999, dropout = 0.5. lr decay 0.99, lr steps 200
-tf.app.flags.DEFINE_float('dropout_factor', 0.3, """ p value for the dropout layer""")
+tf.app.flags.DEFINE_float('dropout_factor', 0.5, """ p value for the dropout layer""")
 tf.app.flags.DEFINE_float('l2_gamma', 1e-4, """ The gamma value for regularization loss""")
 tf.app.flags.DEFINE_float('learning_rate', 1e-3, """Initial learning rate""")
 tf.app.flags.DEFINE_float('lr_decay', 0.98, """The base factor for exp learning rate decay""")
@@ -64,7 +64,7 @@ def train():
 
         # Make our ground truth the real age since the bone ages are normal
         avg_label = tf.transpose(tf.divide(images['reading'], 19))
-
+        print (images['reading'], avg_label, logits)
         # Get some metrics
         predictions2 = tf.transpose(tf.multiply(logits, 19))
         labels2 = tf.transpose(tf.multiply(avg_label, 19))
