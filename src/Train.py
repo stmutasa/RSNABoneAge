@@ -39,7 +39,7 @@ tf.app.flags.DEFINE_float('dropout_factor', 0.3, """ p value for the dropout lay
 tf.app.flags.DEFINE_float('l2_gamma', 1e-4, """ The gamma value for regularization loss""")
 tf.app.flags.DEFINE_float('learning_rate', 1e-3, """Initial learning rate""")
 tf.app.flags.DEFINE_float('lr_decay', 0.98, """The base factor for exp learning rate decay""")
-tf.app.flags.DEFINE_integer('lr_steps', 15000, """ The number of steps until we decay the learning rate""")
+tf.app.flags.DEFINE_integer('lr_steps', 3000, """ The number of steps until we decay the learning rate""")
 tf.app.flags.DEFINE_float('moving_avg_decay', 0.999, """ The decay rate for the moving average tracker""")
 
 # Hyperparameters to control the optimizer

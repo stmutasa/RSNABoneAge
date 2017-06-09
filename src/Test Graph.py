@@ -50,7 +50,7 @@ def test():
 
         # Get some metrics
         predictions2 = tf.transpose(tf.multiply(logits, 19))
-        labels2 = avg_label
+        labels2 = tf.transpose(tf.multiply(avg_label, 19))
 
         # Initialize variables operation
         var_init = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
@@ -102,7 +102,7 @@ def test():
                         predictions1, label1 = mon_sess.run([predictions2, labels2])
 
                         # Output the summary
-                        predictions = predictions1.astype(np.float)
+                        predictions = predictions1.astype(np.float)*19
                         label = label1.astype(np.float)
 
                         # Calculate the accuracy
@@ -114,10 +114,10 @@ def test():
 
                         # Print the summary
                         np.set_printoptions(precision=1)  # use numpy to print only the first sig fig
-                        # print('Eg. Predictions: Network(Real): %.1f (%.1f), %.1f (%.1f), %.1f (%.1f), %.1f (%.1f), '
-                        #       'MAE: %.2f Yrs, Train Accuracy: %s %%'
-                        #       % (predictions[0], label[0], predictions[1], label[1], predictions[2],
-                        #          label[2], predictions[3], label[3], mae, acc))
+                        print('Eg. Predictions: Network(Real): %.1f (%.1f), %.1f (%.1f), %.1f (%.1f), %.1f (%.1f), '
+                              'MAE: %.2f Yrs, Train Accuracy: %s %%'
+                              % (predictions[0], label[0], predictions[1], label[1], predictions[2],
+                                 label[2], predictions[3], label[3], mae, acc))
 
                         # Increment step
                         step += 1
