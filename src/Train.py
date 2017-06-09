@@ -18,20 +18,20 @@ FLAGS = tf.app.flags.FLAGS
 # Define some of the immutable variables
 tf.app.flags.DEFINE_string('train_dir', 'training/', """Directory to write event logs and save checkpoint files""")
 tf.app.flags.DEFINE_integer('num_epochs', 5000, """Number of epochs to run""")
-tf.app.flags.DEFINE_integer('model', 1, """1 Y=F, 2=OF, 3=YM, 4=OM""")
+tf.app.flags.DEFINE_integer('model', 2, """1=YF, 2=OF, 3=YM, 4=OM""")
 
 tf.app.flags.DEFINE_integer('cross_validations', 8, "X fold cross validation hyperparameter")
 tf.app.flags.DEFINE_integer('validation_file', 3, "Which protocol buffer will be used fo validation")
 tf.app.flags.DEFINE_integer('test_file', 4, "Which protocol buffer will be used for testing")
 
-# Young girls = 258, OG: 425, OM: 432, YM: 267
-tf.app.flags.DEFINE_integer('epoch_size', 226, """How many images were loaded""")
-tf.app.flags.DEFINE_integer('print_interval', 20, """How often to print a summary to console during training""")
-tf.app.flags.DEFINE_integer('checkpoint_steps', 280, """How many STEPS to wait before saving a checkpoint""")
+# Young girls = 258, OG: 4056, OM: 432, YM: 267
+tf.app.flags.DEFINE_integer('epoch_size', 4056, """How many images were loaded""")
+tf.app.flags.DEFINE_integer('print_interval', 60, """How often to print a summary to console during training""")
+tf.app.flags.DEFINE_integer('checkpoint_steps', 635, """How many STEPS to wait before saving a checkpoint""")
 tf.app.flags.DEFINE_integer('batch_size', 32, """Number of images to process in a batch.""")
 
 # Hyperparameters:
-# For the old girls run (0.5 with R3): lr = 1e-4, dropout = 0.5, L2 = 1e-3, moving decay = 0.999, lr decay: 0.98, steps = 340
+# For the old girls run (0.5 with R3): lr = 1e-3, dropout = 0.3, L2 = 1e-4, moving decay = 0.999, lr decay: 0.98, steps = 206
 # Young girls run (0.630 with I3):l2 = 1e-4, lr = 1e-3, Lr decay = 0.98 @ 206, moving decay = 0.999, dropout = 0.3. beta: 0.9 and 0.999:
 # Old male run: l2 = 1e-4, lr = 1e-4, moving decay = 0.999, dropout = 0.5. lr decay 0.98, lr steps 346
 # young male run: l2 = 0.001, lr = 0.001, moving decay = 0.999, dropout = 0.5. lr decay 0.99, lr steps 200
@@ -39,7 +39,7 @@ tf.app.flags.DEFINE_float('dropout_factor', 0.3, """ p value for the dropout lay
 tf.app.flags.DEFINE_float('l2_gamma', 1e-4, """ The gamma value for regularization loss""")
 tf.app.flags.DEFINE_float('learning_rate', 1e-3, """Initial learning rate""")
 tf.app.flags.DEFINE_float('lr_decay', 0.98, """The base factor for exp learning rate decay""")
-tf.app.flags.DEFINE_integer('lr_steps', 206, """ The number of steps until we decay the learning rate""")
+tf.app.flags.DEFINE_integer('lr_steps', 200, """ The number of steps until we decay the learning rate""")
 tf.app.flags.DEFINE_float('moving_avg_decay', 0.999, """ The decay rate for the moving average tracker""")
 
 # Hyperparameters to control the optimizer
@@ -57,14 +57,13 @@ def train():
     with tf.Graph().as_default():
 
         # Get a dictionary of our images, id's, and labels here
-        images, validation, val_batch = BonaAge.inputs(skip=False)
+        images, validation, val_batch = BonaAge.inputs(skip=True)
 
         # Build a graph that computes the prediction from the inference model (Forward pass)
         logits, l2loss = BonaAge.forward_pass(images['image'], phase_train1=True)
 
         # Make our ground truth the real age since the bone ages are normal
-        # avg_label = tf.transpose(tf.divide(images['age'], 19))  # The age truth version
-        avg_label = tf.transpose(tf.divide(tf.add(images['label1'], images['label2']), 38))  # Label truth
+        avg_label = tf.transpose(tf.divide(images['reading'], 19))
 
         # Get some metrics
         predictions2 = tf.transpose(tf.multiply(logits, 19))
@@ -159,6 +158,13 @@ def train():
                 print('Done with Training - Epoch limit reached')
 
             finally:
+
+                # # Display images
+                # images = mon_sess.run([images])
+                #
+                # BonaAge.imgshow(images['image'][0], plot=False)
+                # BonaAge.imgshow(images['image'][15], plot=False)
+                # BonaAge.imgshow(images['image'][30])
 
                 # Save the final checkpoint
                 print(" ---------------- SAVING FINAL CHECKPOINT ------------------ ")

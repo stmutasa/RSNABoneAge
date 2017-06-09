@@ -15,6 +15,7 @@ import re  # regular expression operations for the print statements
 import glob  # Simple but killer file reading module
 
 import numpy as np
+import scipy.misc as scipy
 
 import tensorflow as tf
 import Input
@@ -53,15 +54,20 @@ def forward_pass(images, phase_train1=True, bts=0):
     # The second convolutional layer    Dimensions: _, 64, 64, 128
     conv2 = convolution('Conv2', conv1, 5, 128, phase_train=phase_train)
 
+    # Insert inception layer here
+    inception = inception_layer('1stInception', conv2, 64, phase_train=phase_train)
+
     # The third convolutional layer Dimensions: _,32, 32, 256
-    conv3 = convolution('Conv3', conv2, 3, 256, phase_train=phase_train)
+    conv3 = convolution('Conv3', inception, 3, 256, phase_train=phase_train)
 
     # Insert inception/residual layer here. Output is same dimensions as previous layer
-    # inception3 = inception_layer('3rdInception', conv3, 64, phase_train=phase_train)
-    residual = residual_layer('Residual', conv3, 3, 64, 'SAME', phase_train)
+    residual1 = residual_layer('Residual', conv3, 3, 64, 'SAME', phase_train)
+
+    # Second residual/inception layer
+    residual2 = residual_layer('Residual2', residual1, 3, 64, 'SAME', phase_train)
 
     # The 4th convolutional layer   Dimensions: _, 16, 16, 128
-    conv4 = convolution('Conv4', residual, 3, 128, phase_train=phase_train)
+    conv4 = convolution('Conv4', residual2, 3, 128, phase_train=phase_train)
 
     # The affine transform layer here: Dimensions: _, 16, 16, 128
     with tf.variable_scope('Transformer') as scope:
@@ -369,6 +375,10 @@ def inputs(skip=False):
             # First read the image into a unit8 numpy array named raw
             raw = Input.read_image(file_id)
 
+            # convert to float32
+            raw = scipy.imresize(raw, (512, 512))
+            raw = raw.astype(np.int16)
+
             # Append the dictionary with the key: value pair of the basename (not full globname) and processed image
             images[os.path.splitext(os.path.basename(file_id))[0]] = raw
             i += 1
@@ -509,3 +519,25 @@ def after_run(predictions1, label1, loss1, loss_value, step, duration):
           'MSE: %.4f, MAE: %.2f Yrs, Train Accuracy: %s %%'
           % (predictions[0], label[0], predictions[1], label[1], predictions[2],
              label[2], predictions[3], label[3], loss1, mae, acc))
+
+
+def imgshow(nda, plot=True, title=None, margin=0.05):
+    """ Helper function to display a numpy array using matplotlib
+    Args:
+        nda: The source image as a numpy array
+        title: what to title the picture drawn
+        margin: how wide a margin to use
+        plot: plot or not
+    Returns:
+        none"""
+
+    # Set up the figure object
+    fig = plt.figure()
+    ax = fig.add_axes([margin, margin, 1 - 2 * margin, 1 - 2 * margin])
+
+    # The rest is standard matplotlib fare
+    plt.set_cmap("gray")  # Print in greyscale
+    ax.imshow(nda)
+
+    if title: plt.title(title)
+    if plot: plt.show()

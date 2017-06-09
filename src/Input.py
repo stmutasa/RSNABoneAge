@@ -61,7 +61,6 @@ def img_protobuf(images, labels, name):
     :param images: A Dictionary of our source images
     :param labels: A 2D Dictionary with image id:{x,y,z} pairs
     :param name: The base filename
-    :return: Val_size: size of the validation set
     """
 
     # First skip some images based on what we're training:
@@ -78,17 +77,11 @@ def img_protobuf(images, labels, name):
         age = 15
         gender = 'M'
 
-    # Define the array we will use to write the records to the .tfrecords protobuf.
-    writer = []
+    # Define the filenames
+    filenames = os.path.join(records_file, name + '.tfrecords')
 
-    # Initialize all the writers
-    for i in range (0, FLAGS.cross_validations):
-
-        # Define the filenames
-        filenames = os.path.join(records_file, name + str(i) + '.tfrecords')
-
-        # Open the file writer
-        writer.append(tf.python_io.TFRecordWriter(filenames))
+    # Open the file writer
+    writer = tf.python_io.TFRecordWriter(filenames)
 
     # Variable to keep track of how many files we skipped
     skipped = 0
@@ -118,35 +111,36 @@ def img_protobuf(images, labels, name):
 
         # If the age doesn't fit, skip
         elif age > 10:
-            if float(labels[index]['ChrAge']) <= 10:
+            if float(labels[index]['ChrAge']) <= 8:
                 skipped += 1
                 continue
 
         elif age <= 10:
-            if float(labels[index]['ChrAge']) >= 10:
+            if float(labels[index]['ChrAge']) >= 7:
                 skipped += 1
                 continue
 
         # Create our dictionary of values to store: Added some dimensions values that may be useful later on
-        data = {'data': images[index],
-                'label1': labels[index]['Reading1'], 'label2': labels[index]['Reading2'],
-                'age': labels[index]['ChrAge'], 'race': labels[index]['Race']}
+        reading = (float(labels[index]['Reading1']) + float(labels[index]['Reading2'])) / 2
+
+        data = {'age': float(labels[index]['ChrAge']), 'reading': reading, 'sex': labels[index]['Gender'],
+                'id': str(index), 'data': images[index]}
 
         example = tf.train.Example(features=tf.train.Features(feature=create_feature_dict(data, index)))
 
         # Calculate the file index as 0 - 4
-        index = loaded % 5
+        index = loaded % FLAGS.cross_validations
 
         # This image made it in increment the loaded image counter
         loaded += 1
 
         # Save this index as a serialized string in the protobuf
-        writer[index].write(example.SerializeToString())
+        writer.write(example.SerializeToString())
 
-    for i in range(0, FLAGS.cross_validations): writer[i].close()  # Close the file after writing
+    writer.close()  # Close the file after writing
 
     # Validation size is total divided by cross validations
-    val_size = loaded / FLAGS.cross_validations
+    val_size = loaded
 
     # Print loading info
     print('Skipped: %s non-gender and age matched images, Validation size: %s' % (skipped, val_size))
@@ -189,19 +183,18 @@ def load_protobuf(input_name, return_dict=True):
         Returns:
             Images and Labels: The tensors with the data"""
 
-    # Outputs strings (filenames) to a queue for an input pipeline can do this in train and pass to this function
-    # Will generate a random shuffle of the string tensors each epoch
-    filedir = os.path.join(records_file, input_name)  # filenames for the protobuf
-
-    filenames = glob.glob(filedir + '*.tfrecords')
+    # Load all the filenames in glob
+    filenames = glob.glob('data/' + '*.tfrecords')
 
     # Define the filenames to remove
-    valid = ('data/bonageproto%s.tfrecords' %FLAGS.validation_file)
-    test = ('data/bonageproto%s.tfrecords' % FLAGS.test_file)
+    for i in range (0, len(filenames)):
+        if str(FLAGS.validation_file) in filenames[i]:
+            valid = filenames[i]
 
     # Delete them from the filename queue
     filenames.remove(valid)
-    filenames.remove(test)
+
+    print(filenames)
 
     # now load the remaining files
     filename_queue = tf.train.string_input_producer(filenames, num_epochs=None)
@@ -211,22 +204,21 @@ def load_protobuf(input_name, return_dict=True):
 
     # Restore the feature dictionary to store the variables we will retrieve using the parse
 
-    feature_dict = {'id': tf.FixedLenFeature([], tf.int64), 'data': tf.FixedLenFeature([], tf.string),
-                    'label1': tf.FixedLenFeature([], tf.string), 'label2': tf.FixedLenFeature([], tf.string),
-                    'age': tf.FixedLenFeature([], tf.string), 'race': tf.FixedLenFeature([], tf.string)}
+    feature_dict = {'id': tf.FixedLenFeature([], tf.string), 'data': tf.FixedLenFeature([], tf.string),
+                    'reading': tf.FixedLenFeature([], tf.string), 'sex': tf.FixedLenFeature([], tf.string),
+                    'age': tf.FixedLenFeature([], tf.string)}
 
     # Parses one protocol buffer file into the features dictionary which maps keys to tensors with the data
     features = tf.parse_single_example(serialized_example, features=feature_dict)
 
     # Change the raw image data to 8 bit integers first
-    image = tf.decode_raw(features['data'], tf.uint8)  # Set this examples image to a blank tensor with integer data
+    image = tf.decode_raw(features['data'], tf.int16)  # Set this examples image to a blank tensor with integer data
     image = tf.reshape(image, shape=[512, 512, 1])  # Set the dimensions of the image ( must equal input dims here)
 
     # Cast all our data to 32 bit floating point units. Cannot convert string to number unless you use that function
     image = tf.cast(image, tf.float32)
-    id = tf.cast(features['id'], tf.float32)
-    label1 = tf.string_to_number(features['label1'], tf.float32)
-    label2 = tf.string_to_number(features['label2'], tf.float32)
+    id = tf.string_to_number(features['id'], tf.float32)
+    reading = tf.string_to_number(features['reading'], tf.float32)
     age = tf.string_to_number(features['age'], tf.float32)
 
     # Apply image pre processing here:
@@ -236,7 +228,7 @@ def load_protobuf(input_name, return_dict=True):
     # For random rotation, generate a random angle and apply the rotation
     radians = tf.random_uniform([1], 0, 0.52)
     image = tf.contrib.image.rotate(image, radians)
-    image = tf.image.per_image_standardization(image=image)  # Subtract mean and div by variance
+    #image = tf.image.per_image_standardization(image=image)  # Subtract mean and div by variance
 
     # # Resize images
     image = tf.image.resize_images(image, [284, 284])
@@ -248,9 +240,9 @@ def load_protobuf(input_name, return_dict=True):
 
     # Return data as a dictionary by default, otherwise return it as just the raw sets
     if not return_dict:
-        return image, label1, label2, id, age
+        return image, reading, id, age
     else:
-        final_data = {'image': image, 'label1': label1, 'label2': label2, 'age': age}
+        final_data = {'image': image, 'reading': reading, 'age': age}
         returned_dict = {}
         returned_dict['id'] = id
         for key, feature in final_data.items():
@@ -265,16 +257,15 @@ def load_validation_set(input_name, valid=True):
     :return:
     """
 
-    # Filenames for the protobuf
-    filedir = os.path.join(records_file, input_name)  # filenames for the protobuf
-
     # Use Glob here
-    if valid: filenames = glob.glob(filedir + str(FLAGS.validation_file) + '*.tfrecords')
-    else: filenames = glob.glob(filedir + str(FLAGS.test_file) + '*.tfrecords')
+    filenames1 = glob.glob('data/' + '*.tfrecords')
 
-    # Define the filenames
-    valid = ('data/bonageproto%s.tfrecords' % FLAGS.validation_file)
-    test = ('data/bonageproto%s.tfrecords' % FLAGS.test_file)
+    # Retreive only the right filename
+    for i in range(0, len(filenames1)):
+        if str(FLAGS.validation_file) in filenames1[i]:
+            filenames = [filenames1[i]]
+
+    print (filenames)
 
     # Load the filename queue
     filename_queue = tf.train.string_input_producer(filenames, shuffle=False)
@@ -285,32 +276,42 @@ def load_validation_set(input_name, valid=True):
 
     # Restore the feature dictionary to store the variables we will retrieve using the parse
 
-    feature_dict = {'id': tf.FixedLenFeature([], tf.int64), 'data': tf.FixedLenFeature([], tf.string),
-                    'label1': tf.FixedLenFeature([], tf.string), 'label2': tf.FixedLenFeature([], tf.string),
-                    'age': tf.FixedLenFeature([], tf.string), 'race': tf.FixedLenFeature([], tf.string)}
+    feature_dict = {'id': tf.FixedLenFeature([], tf.string), 'data': tf.FixedLenFeature([], tf.string),
+                    'reading': tf.FixedLenFeature([], tf.string), 'sex': tf.FixedLenFeature([], tf.string),
+                    'age': tf.FixedLenFeature([], tf.string)}
 
     # Parses one protocol buffer file into the features dictionary which maps keys to tensors with the data
     features = tf.parse_single_example(serialized_example, features=feature_dict)
 
     # Change the raw image data to 8 bit integers first
-    image = tf.decode_raw(features['data'], tf.uint8)  # Set this examples image to a blank tensor with integer data
+    image = tf.decode_raw(features['data'], tf.int16)  # Set this examples image to a blank tensor with integer data
     image = tf.reshape(image, shape=[512, 512, 1])  # Set the dimensions of the image ( must equal input dims here)
 
     # Cast all our data to 32 bit floating point units. Cannot convert string to number unless you use that function
     image = tf.cast(image, tf.float32)
-    id = tf.cast(features['id'], tf.float32)
-    label1 = tf.string_to_number(features['label1'], tf.float32)
-    label2 = tf.string_to_number(features['label2'], tf.float32)
+    id = tf.string_to_number(features['id'], tf.float32)
+    reading = tf.string_to_number(features['reading'], tf.float32)
     age = tf.string_to_number(features['age'], tf.float32)
 
     # Apply image pre processing here:
-    image = tf.image.per_image_standardization(image=image)  # Subtract mean and div by variance
+    image = tf.image.random_flip_left_right(image)  # First randomly flip left/right
+    image = tf.image.random_flip_up_down(image)  # Up/down flip
+
+    # For random rotation, generate a random angle and apply the rotation
+    radians = tf.random_uniform([1], 0, 0.52)
+    image = tf.contrib.image.rotate(image, radians)
+    #image = tf.image.per_image_standardization(image=image)  # Subtract mean and div by variance
 
     # # Resize images
-    image = tf.image.resize_images(image, [256, 256])
+    image = tf.image.resize_images(image, [284, 284])
+    image = tf.random_crop(image, [256, 256, 1])  # Random crop the image to a box 80% of the size
+    # image = tf.image.resize_images(image, [256, 256])
+
+    # create float summary image
+    tf.summary.image('Normalized Image', tf.reshape(image, shape=[1, 256, 256, 1]), max_outputs=4)
 
     # Return data as a dictionary by default, otherwise return it as just the raw sets
-    final_data = {'image': image, 'label1': label1, 'label2': label2, 'age': age}
+    final_data = {'image': image, 'reading': reading, 'age': age}
     returned_dict = {}
     returned_dict['id'] = id
     for key, feature in final_data.items():
