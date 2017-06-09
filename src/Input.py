@@ -120,16 +120,14 @@ def img_protobuf(images, labels, name):
                 skipped += 1
                 continue
 
-        # Create our dictionary of values to store: Added some dimensions values that may be useful later on
+        # Generate the correct reading as the avg
         reading = (float(labels[index]['Reading1']) + float(labels[index]['Reading2'])) / 2
 
+        # Create our dictionary of values to store: Added some dimensions values that may be useful later on
         data = {'age': float(labels[index]['ChrAge']), 'reading': reading, 'sex': labels[index]['Gender'],
                 'id': str(index), 'data': images[index]}
 
         example = tf.train.Example(features=tf.train.Features(feature=create_feature_dict(data, index)))
-
-        # Calculate the file index as 0 - 4
-        index = loaded % FLAGS.cross_validations
 
         # This image made it in increment the loaded image counter
         loaded += 1
@@ -193,7 +191,6 @@ def load_protobuf(input_name, return_dict=True):
 
     # Delete them from the filename queue
     filenames.remove(valid)
-
     print(filenames)
 
     # now load the remaining files
@@ -228,12 +225,10 @@ def load_protobuf(input_name, return_dict=True):
     # For random rotation, generate a random angle and apply the rotation
     radians = tf.random_uniform([1], 0, 0.52)
     image = tf.contrib.image.rotate(image, radians)
-    #image = tf.image.per_image_standardization(image=image)  # Subtract mean and div by variance
 
-    # # Resize images
+    # Resize images
     image = tf.image.resize_images(image, [284, 284])
     image = tf.random_crop(image, [256, 256, 1])  # Random crop the image to a box 80% of the size
-    # image = tf.image.resize_images(image, [256, 256])
 
     # create float summary image
     tf.summary.image('Normalized Image', tf.reshape(image, shape=[1, 256, 256, 1]), max_outputs=4)
@@ -260,10 +255,13 @@ def load_validation_set(input_name, valid=True):
     # Use Glob here
     filenames1 = glob.glob('data/' + '*.tfrecords')
 
+    # The real filenames
+    filenames = []
+
     # Retreive only the right filename
     for i in range(0, len(filenames1)):
         if str(FLAGS.validation_file) in filenames1[i]:
-            filenames = [filenames1[i]]
+            filenames.append(filenames1[i])
 
     print (filenames)
 
@@ -293,22 +291,11 @@ def load_validation_set(input_name, valid=True):
     reading = tf.string_to_number(features['reading'], tf.float32)
     age = tf.string_to_number(features['age'], tf.float32)
 
-    # Apply image pre processing here:
-    image = tf.image.random_flip_left_right(image)  # First randomly flip left/right
-    image = tf.image.random_flip_up_down(image)  # Up/down flip
-
-    # For random rotation, generate a random angle and apply the rotation
-    radians = tf.random_uniform([1], 0, 0.52)
-    image = tf.contrib.image.rotate(image, radians)
-    #image = tf.image.per_image_standardization(image=image)  # Subtract mean and div by variance
-
     # # Resize images
-    image = tf.image.resize_images(image, [284, 284])
-    image = tf.random_crop(image, [256, 256, 1])  # Random crop the image to a box 80% of the size
-    # image = tf.image.resize_images(image, [256, 256])
+    image = tf.image.resize_images(image, [256, 256])
 
     # create float summary image
-    tf.summary.image('Normalized Image', tf.reshape(image, shape=[1, 256, 256, 1]), max_outputs=4)
+    tf.summary.image('Normalized Validation', tf.reshape(image, shape=[1, 256, 256, 1]), max_outputs=4)
 
     # Return data as a dictionary by default, otherwise return it as just the raw sets
     final_data = {'image': image, 'reading': reading, 'age': age}

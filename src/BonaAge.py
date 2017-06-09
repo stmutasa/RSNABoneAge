@@ -54,20 +54,14 @@ def forward_pass(images, phase_train1=True, bts=0):
     # The second convolutional layer    Dimensions: _, 64, 64, 128
     conv2 = convolution('Conv2', conv1, 5, 128, phase_train=phase_train)
 
-    # Insert inception layer here
-    inception = inception_layer('1stInception', conv2, 64, phase_train=phase_train)
-
     # The third convolutional layer Dimensions: _,32, 32, 256
-    conv3 = convolution('Conv3', inception, 3, 256, phase_train=phase_train)
+    conv3 = convolution('Conv3', conv2, 3, 256, phase_train=phase_train)
 
     # Insert inception/residual layer here. Output is same dimensions as previous layer
     residual1 = residual_layer('Residual', conv3, 3, 64, 'SAME', phase_train)
 
-    # Second residual/inception layer
-    residual2 = residual_layer('Residual2', residual1, 3, 64, 'SAME', phase_train)
-
     # The 4th convolutional layer   Dimensions: _, 16, 16, 128
-    conv4 = convolution('Conv4', residual2, 3, 128, phase_train=phase_train)
+    conv4 = convolution('Conv4', residual1, 3, 128, phase_train=phase_train)
 
     # The affine transform layer here: Dimensions: _, 16, 16, 128
     with tf.variable_scope('Transformer') as scope:
@@ -392,7 +386,7 @@ def inputs(skip=False):
 
         # Part 2: Save the images and labels to protobuf -------------------------------
         print('------%s Images successfully loaded------------------Saving images to records...' % i)
-        val_size = Input.img_protobuf(images, labels, 'bonageproto')
+        _ = Input.img_protobuf(images, labels, 'bonageproto')
 
     else:
         print('-------------------------Previously saved records found! Loading...')
@@ -407,7 +401,7 @@ def inputs(skip=False):
     data = Input.randomize_batches(data, FLAGS.batch_size)
     validation = Input.val_batches(validation, FLAGS.batch_size)
 
-    return data, validation, 51
+    return data, validation
 
 
 def RunningMean(x, N):
