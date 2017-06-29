@@ -15,7 +15,6 @@ import re  # regular expression operations for the print statements
 import glob  # Simple but killer file reading module
 
 import numpy as np
-import scipy.misc as scipy
 
 import tensorflow as tf
 import Input
@@ -55,16 +54,16 @@ def forward_pass(images, phase_train1=True, bts=0):
     conv2 = convolution('Conv2', conv1, 5, 128, phase_train=phase_train)
 
     # Inception layer
-    inception = inception_layer('Inception', conv2, 32, phase_train=phase_train)
+    # inception = inception_layer('Inception', conv2, 32, phase_train=phase_train)
 
     # The third convolutional layer Dimensions: _,32, 32, 256
-    conv3 = convolution('Conv3', inception, 3, 256, phase_train=phase_train)
+    conv3 = convolution('Conv3', conv2, 3, 256, phase_train=phase_train)
 
     # Insert inception/residual layer here. Output is same dimensions as previous layer
-    residual1 = residual_layer('Residual', conv3, 3, 64, 'SAME', phase_train)
+    residual = residual_layer('Residual', conv3, 3, 64, 'SAME', phase_train)
 
     # The 4th convolutional layer   Dimensions: _, 16, 16, 128
-    conv4 = convolution('Conv4', residual1, 3, 128, phase_train=phase_train)
+    conv4 = convolution('Conv4', residual, 3, 128, phase_train=phase_train)
 
     # The affine transform layer here: Dimensions: _, 16, 16, 128
     with tf.variable_scope('Transformer') as scope:
@@ -305,14 +304,11 @@ def backward_pass(total_loss):
     tf.summary.scalar('Total_Loss', total_loss)
 
     # Use learning rate decay
-    lr = tf.train.exponential_decay(FLAGS.learning_rate, global_step, FLAGS.lr_steps, FLAGS.lr_decay, staircase=True)
+    lr = tf.train.exponential_decay(FLAGS.learning_rate, global_step, FLAGS.lr_steps, FLAGS.lr_decay, staircase=False)
     tf.summary.scalar('learning_rate', lr)  # Output a scalar sumamry to TensorBoard
 
     # Compute the gradients. Multiple alternate methods grayed out. So far Adam is winning by a mile
     opt = tf.train.AdamOptimizer(learning_rate=lr, beta1=FLAGS.beta1, beta2=FLAGS.beta2)
-    # opt = tf.train.MomentumOptimizer(lr, FLAGS.momentum, use_nesterov=FLAGS.use_nesterov)
-    # opt = tf.train.ProximalGradientDescentOptimizer(lr,l2_regularization_strength=FLAGS.l2_gamma)
-    # opt = tf.train.GradientDescentOptimizer(lr)
 
     # Compute the gradients
     gradients = opt.compute_gradients(total_loss)
@@ -324,7 +320,6 @@ def backward_pass(total_loss):
     train_op = opt.apply_gradients(clipped_gradients, global_step, name='train')
 
     # Add histograms for the trainable variables. i.e. the collection of variables created with Trainable=True
-    # These include the biases, the activation layers (nonlinearities) and weights
     for var in tf.trainable_variables():
         tf.summary.histogram(var.op.name, var)
 
@@ -337,7 +332,7 @@ def backward_pass(total_loss):
     with tf.control_dependencies([train_op, variable_averages_op]):  # Wait until we apply the gradients
         dummy_op = tf.no_op(name='train')  # Does nothing. placeholder to control the execution of the graph
 
-    return train_op
+    return dummy_op
 
 
 def _activation_summary(x):
@@ -372,9 +367,9 @@ def inputs(skip=False):
             # First read the image into a unit8 numpy array named raw
             raw = Input.read_image(file_id)
 
-            # convert to float32
-            raw = scipy.imresize(raw, (512, 512))
-            raw = raw.astype(np.int16)
+            # Standardize the raw image
+            raw = raw.astype(np.float32)
+            # raw = (raw - np.mean(raw)) / np.std(raw)
 
             # Append the dictionary with the key: value pair of the basename (not full globname) and processed image
             images[os.path.splitext(os.path.basename(file_id))[0]] = raw
@@ -499,7 +494,8 @@ def calculate_errors(predictions, label):
     return accuracy, mae
 
 
-def after_run(predictions1, label1, loss1, loss_value, step, duration):
+def after_run(predictions1, label1, loss1, loss_value, step, duration, mae=0):
+
     # First print the number of examples per step
     eg_s = FLAGS.batch_size / duration
     print('Step %d, L2 Loss: = %.8f (%.1f eg/s;)' % (step, loss_value, eg_s), end=" ")
@@ -508,12 +504,12 @@ def after_run(predictions1, label1, loss1, loss_value, step, duration):
     label = label1.astype(np.float)
 
     # Calculate the accuracy
-    acc, mae = calculate_errors(predictions, label)
+    acc, _ = calculate_errors(predictions, label)
 
     # Print the summary
     np.set_printoptions(precision=1)  # use numpy to print only the first sig fig
     print('Eg. Predictions: Network(Real): %.1f (%.1f), %.1f (%.1f), %.1f (%.1f), %.1f (%.1f), '
-          'MSE: %.4f, MAE: %.2f Yrs, Train Accuracy: %s %%'
+          'MSE: %.4f, MAE: %.2f Yrs, Train Accuracy: %.32 %%'
           % (predictions[0], label[0], predictions[1], label[1], predictions[2],
              label[2], predictions[3], label[3], loss1, mae, acc))
 

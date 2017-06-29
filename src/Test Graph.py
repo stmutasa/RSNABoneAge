@@ -4,6 +4,8 @@ from __future__ import absolute_import  # import multi line and Absolute/Relativ
 from __future__ import division  # change the division operator to output float if dividing two integers
 from __future__ import print_function  # use the print function from python 3
 
+import glob
+import os
 import time
 
 import BonaAge
@@ -18,16 +20,16 @@ FLAGS = tf.app.flags.FLAGS
 # Define some of the immutable variables
 # Train and validation set sizes: YG: 206/51, OG: 340/85, OM: 346/86
 tf.app.flags.DEFINE_string('train_dir', 'training/', """Directory to write event logs and save checkpoint files""")
-tf.app.flags.DEFINE_integer('model', 1, """1 Y=F, 2=OF, 3=YM, 4=OM""")
+tf.app.flags.DEFINE_integer('model', 2, """1 Y=F, 2=OF, 3=YM, 4=OM""")
 tf.app.flags.DEFINE_integer('num_epochs', 1, """Number of epochs to run""")
-tf.app.flags.DEFINE_integer('epoch_size', 269, """OF: 508""")
+tf.app.flags.DEFINE_integer('epoch_size', 56, """Test examples: OF: 508""")
 tf.app.flags.DEFINE_integer('print_interval', 1, """How often to print a summary to console during training""")
-tf.app.flags.DEFINE_integer('batch_size', 32, """Number of images to process in a batch.""")
-tf.app.flags.DEFINE_integer('validation_file', 3, "Which protocol buffer will be used fo validation")
+tf.app.flags.DEFINE_integer('batch_size', 56, """Number of images to process in a batch.""")
+tf.app.flags.DEFINE_string('validation_file', 'test', "Which protocol buffer will be used fo validation")
 
 # Hyperparameters:
-tf.app.flags.DEFINE_float('dropout_factor', 0.5, """ p value for the dropout layer""")
-tf.app.flags.DEFINE_float('l2_gamma', 1e-4, """ The gamma value for regularization loss""")
+tf.app.flags.DEFINE_float('dropout_factor', 0.3, """ p value for the dropout layer""")
+tf.app.flags.DEFINE_float('l2_gamma', 2e-4, """ The gamma value for regularization loss""")
 
 # Define a custom training class
 def test():
@@ -54,8 +56,16 @@ def test():
         # Initialize variables operation
         var_init = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
 
+        # Restore moving average of the variables
+        var_ema = tf.train.ExponentialMovingAverage(0.999)
+
+        # Define variables to restore
+        var_restore = var_ema.variables_to_restore()
+
         # Initialize the saver
-        saver = tf.train.Saver()
+        saver = tf.train.Saver(var_restore, max_to_keep=5)
+
+        best_MAE = 0.9
 
         while True:
 
@@ -76,7 +86,7 @@ def test():
                     restorer.restore(mon_sess, ckpt.model_checkpoint_path)
 
                     # Extract the epoch
-                    Epoch = ckpt.model_checkpoint_path.split('/')[-1].split('.')[0].split('_')[-1]
+                    Epoch = ckpt.model_checkpoint_path.split('/')[-1].split('Epoch')[-1]
 
                 # Initialize the thread coordinator
                 coord = tf.train.Coordinator()
@@ -95,7 +105,7 @@ def test():
                 total_ACC = []
 
                 try:
-                    while step <= max_steps:
+                    while step < max_steps:
 
                         # Load some metrics for testing
                         predictions1, label1 = mon_sess.run([predictions2, labels2])
@@ -133,7 +143,31 @@ def test():
                     # Print the final accuracies and MAE
                     print('-' * 70)
                     print(
-                        '--------- EPOCH: %s TOTAL MAE: %.3f, TOTAL ACCURACY: %.2f %% -------' % (Epoch, Mean_AE, accuracy))
+                        '--------- EPOCH: %s TOTAL MAE: %.3f, TOTAL ACCURACY: %.2f %% (Old Best: %s) -------' % (Epoch, Mean_AE, accuracy, best_MAE))
+
+                    # Lets save runs below 0.8
+                    if Mean_AE < best_MAE:
+
+                        # Save the checkpoint
+                        print(" ---------------- SAVING THIS ONE %s", ckpt.model_checkpoint_path)
+
+                        # Define the filename
+                        file = ('Epoch_%s_MAE_%0.3f' % (Epoch, Mean_AE))
+
+                        # Define the checkpoint file:
+                        checkpoint_file = os.path.join('testing/', file)
+
+                        # Save the checkpoint
+                        saver.save(mon_sess, checkpoint_file)
+
+                        # Save a new best MAE
+                        best_MAE = Mean_AE
+
+
+                    # Garbage collection
+                    del total_MAE, total_ACC
+                    del label, label1
+                    del predictions, predictions1
 
                     # Stop threads when done
                     coord.request_stop()
@@ -147,9 +181,22 @@ def test():
             # Break if this is the final checkpoint
             if 'Final' in Epoch: break
 
-            # Otherwise sleep for X seconds before repeating
-            print ('Sleeping')
-            time.sleep(int(FLAGS.epoch_size*0.6))
+            # Print divider
+            print('-' * 70)
+
+            # Otherwise check folder for changes
+            filecheck = glob.glob('training/' + '*')
+            newfilec = filecheck
+
+            # Sleep if no changes
+            while filecheck == newfilec:
+
+                # Sleep an amount of time proportional to the epoch size
+                time.sleep(int(FLAGS.epoch_size * 0.1))
+
+                # Recheck the folder for changes
+                newfilec = glob.glob('training/' + '*')
+
 
 
 def main(argv=None):  # pylint: disable=unused-argument

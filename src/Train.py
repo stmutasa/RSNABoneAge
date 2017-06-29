@@ -8,6 +8,7 @@ import os
 import time                                 # to retreive current time
 
 import BonaAge
+import numpy as np
 import tensorflow as tf
 
 _author_ = 'Simi'
@@ -17,29 +18,24 @@ FLAGS = tf.app.flags.FLAGS
 
 # Define some of the immutable variables
 tf.app.flags.DEFINE_string('train_dir', 'training/', """Directory to write event logs and save checkpoint files""")
-tf.app.flags.DEFINE_integer('num_epochs', 3000, """Number of epochs to run""")
-tf.app.flags.DEFINE_integer('model', 1, """1=YF, 2=OF, 3=YM, 4=OM""")
+tf.app.flags.DEFINE_integer('num_epochs', 900, """Number of epochs to run""")
+tf.app.flags.DEFINE_integer('model', 2, """1=YF, 2=OF, 3=YM, 4=OM""")
 
 tf.app.flags.DEFINE_integer('cross_validations', 8, "X fold cross validation hyperparameter")
-tf.app.flags.DEFINE_integer('validation_file', 3, "Which protocol buffer will be used fo validation")
-tf.app.flags.DEFINE_integer('test_file', 4, "Which protocol buffer will be used for testing")
+tf.app.flags.DEFINE_string('validation_file', 'test', "Which protocol buffer will be used fo validation")
 
-# Young girls = 838, OG: 4056, OM: 432, YM: 267
-tf.app.flags.DEFINE_integer('epoch_size', 1888, """How many images were loaded""")
-tf.app.flags.DEFINE_integer('print_interval', 59, """How often to print a summary to console during training""")
-tf.app.flags.DEFINE_integer('checkpoint_steps', 600, """How many STEPS to wait before saving a checkpoint""")
-tf.app.flags.DEFINE_integer('batch_size', 32, """Number of images to process in a batch.""")
+# YG = 2309(152), OG: 4093(495), OM: 2759(500), YM: 1184(162), AM: 3636(697), AF: 5228(683)
+tf.app.flags.DEFINE_integer('epoch_size', 4093, """How many images were loaded""")
+tf.app.flags.DEFINE_integer('print_interval', 73, """How often to print a summary to console during training""")
+tf.app.flags.DEFINE_integer('checkpoint_steps', 731, """How many STEPS to wait before saving a checkpoint""")
+tf.app.flags.DEFINE_integer('batch_size', 56, """Number of images to process in a batch.""")
 
 # Hyperparameters:
-# For the old girls run (0.5 with R3): lr = 1e-3, dropout = 0.3, L2 = 1e-4, moving decay = 0.999, lr decay: 0.98, steps = 206
-# Young girls run (0.630 with I3):l2 = 1e-4, lr = 1e-3, Lr decay = 0.98 @ 206, moving decay = 0.999, dropout = 0.3. beta: 0.9 and 0.999:
-# Old male run: l2 = 1e-4, lr = 1e-4, moving decay = 0.999, dropout = 0.5. lr decay 0.98, lr steps 346
-# young male run: l2 = 0.001, lr = 0.001, moving decay = 0.999, dropout = 0.5. lr decay 0.99, lr steps 200
-tf.app.flags.DEFINE_float('dropout_factor', 0.5, """ p value for the dropout layer""")
-tf.app.flags.DEFINE_float('l2_gamma', 1e-4, """ The gamma value for regularization loss""")
-tf.app.flags.DEFINE_float('learning_rate', 1e-3, """Initial learning rate""")
+tf.app.flags.DEFINE_float('dropout_factor', 0.3, """ Keep probability""")
+tf.app.flags.DEFINE_float('l2_gamma', 2e-4, """ The gamma value for regularization loss""")
+tf.app.flags.DEFINE_float('learning_rate', 5e-5, """Initial learning rate""")
 tf.app.flags.DEFINE_float('lr_decay', 0.98, """The base factor for exp learning rate decay""")
-tf.app.flags.DEFINE_integer('lr_steps', 3000, """ The number of steps until we decay the learning rate""")
+tf.app.flags.DEFINE_integer('lr_steps', 4000, """ The number of steps until we decay the learning rate""")
 tf.app.flags.DEFINE_float('moving_avg_decay', 0.999, """ The decay rate for the moving average tracker""")
 
 # Hyperparameters to control the optimizer
@@ -64,10 +60,16 @@ def train():
 
         # Make our ground truth the real age since the bone ages are normal
         avg_label = tf.transpose(tf.divide(images['reading'], 19))
-        print (images['reading'], avg_label, logits)
+
         # Get some metrics
         predictions2 = tf.transpose(tf.multiply(logits, 19))
         labels2 = tf.transpose(tf.multiply(avg_label, 19))
+
+        # Get MAE
+        MAE = tf.metrics.mean_absolute_error(labels2, predictions2)
+
+        # Make a summary of MAE
+        tf.summary.scalar('MAE', MAE[1])
 
         # Calculate the objective function loss
         mse_loss = BonaAge.total_loss(logits, avg_label)
@@ -81,29 +83,40 @@ def train():
         # Merge the summaries
         all_summaries = tf.summary.merge_all()
 
-        # Initialize the handle to the summary writer in our training directory
-        summary_writer = tf.summary.FileWriter(FLAGS.train_dir)
-
         # Initialize variables operation
         var_init = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
 
-        # Get the checkpoint
-        # ckpt = tf.train.get_checkpoint_state(FLAGS.train_dir)
+        # Restore moving average of the variables
+        var_ema = tf.train.ExponentialMovingAverage(0.999)
+
+        # Define variables to restore
+        var_restore = var_ema.variables_to_restore()
 
         # Initialize the saver
-        saver = tf.train.Saver(max_to_keep=15)
-
-        # Initialize the restorer
-        # restorer = tf.train.import_meta_graph('training/Checkpoint.ckpt.meta')
+        saver = tf.train.Saver(var_restore, max_to_keep=5)
 
         # config Proto sets options for configuring the session like run on GPU, allocate GPU memory etc.
         with tf.Session() as mon_sess:
 
-            # Restore the saver
-            # if ckpt: restorer.restore(mon_sess, ckpt.model_checkpoint_path)
+            # Retreive the checkpoint
+            ckpt = tf.train.get_checkpoint_state('training/')
 
             # Initialize the variables
             mon_sess.run(var_init)
+
+            if ckpt and ckpt.model_checkpoint_path:
+
+                # Display message
+                print ("Previous Checkpoint Found! Loading: %s" %ckpt.model_checkpoint_path)
+
+                # Restore the learned variables
+                restorer = tf.train.import_meta_graph(ckpt.model_checkpoint_path + '.meta')
+
+                # Restore the graph
+                restorer.restore(mon_sess, ckpt.model_checkpoint_path)
+
+            # Initialize the handle to the summary writer in our training directory
+            summary_writer = tf.summary.FileWriter(FLAGS.train_dir, mon_sess.graph)
 
             # Initialize the thread coordinator
             coord = tf.train.Coordinator()
@@ -114,39 +127,69 @@ def train():
             # Initialize the step counter
             step = 0
 
+            # Initialize MAE_avg
+            MAE_low = 1.5
+            epoch_MAE = []
+
             # Set the max step count
             max_steps = (FLAGS.epoch_size / FLAGS.batch_size) * FLAGS.num_epochs
 
             try:
                 while step <= max_steps:
-                    start_time = time.time()  # Start the timer for this iteration
-                    mon_sess.run(train_op)  # One iteration
-                    duration = time.time() - start_time  # Calculate duration of each iteration
+
+                    # Start the timer
+                    start_time = time.time()
+
+                    # Run an iteration
+                    mon_sess.run(train_op)
+
+                    # Get the MAE
+                    predictions1, label1 = mon_sess.run([predictions2, labels2])
+
+                    # Output the summary
+                    predictions = predictions1.astype(np.float)
+                    label = label1.astype(np.float)
+
+                    # Calculate the accuracy
+                    _, mae_batch = BonaAge.calculate_errors(predictions, label)
+                    epoch_MAE.append(mae_batch)
+
+                    # Calculate Duration
+                    duration = time.time() - start_time
+
+                    # Increment step
                     step += 1
 
-                    # Put if statements here for things you will do every x amount of steps
-                    if step % FLAGS.checkpoint_steps == 0:
-
-                        # Save the checkpoint
-                        print(" ---------------- SAVING CHECKPOINT ------------------")
-
-                        # Define the filename
-                        Epoch = int(step / (FLAGS.epoch_size / FLAGS.batch_size))
-                        file = ('Checkpoint_%s' % Epoch)
-
-                        # Define the checkpoint file:
-                        checkpoint_file = os.path.join(FLAGS.train_dir, file)
-
-                        # Save the checkpoint
-                        saver.save(mon_sess, checkpoint_file)
-
                     if step % FLAGS.print_interval == 0:  # This statement will print loss, step and other stuff
+
+                        # Calculate MAE for the batch
+                        MAE_avg_check = float(sum(epoch_MAE) / len(epoch_MAE))
+
+                        if MAE_avg_check < (MAE_low-0.005) or step < (FLAGS.print_interval+5):
+
+                            # Save the checkpoint
+                            print(" ---------------- SAVING CHECKPOINT MAE: %0.3f ------------------" % MAE_avg_check)
+
+                            # Define the filename
+                            Epoch = int(step / (FLAGS.epoch_size / FLAGS.batch_size))
+                            file = ('CkptMAE%0.3fEpoch%s' % (MAE_avg_check, Epoch))
+
+                            # Define the checkpoint file:
+                            checkpoint_file = os.path.join(FLAGS.train_dir, file)
+
+                            # Save the checkpoint
+                            saver.save(mon_sess, checkpoint_file)
+
+                            if step > (FLAGS.print_interval*2): MAE_low = MAE_avg_check
+
+                        del epoch_MAE
+                        epoch_MAE = []
 
                         # Load some metrics for testing
                         predictions1, label1, loss1, loss2 = mon_sess.run([predictions2, labels2, mse_loss, l2loss])
 
                         # Output the summary
-                        BonaAge.after_run(predictions1, label1, loss1, (loss2 * 100), step, duration)
+                        BonaAge.after_run(predictions1, label1, loss1, (loss2 * 100), step, duration, MAE_avg_check)
 
                         # Run a session to retrieve our summaries
                         summary = mon_sess.run(all_summaries)
