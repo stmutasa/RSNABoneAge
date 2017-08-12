@@ -191,7 +191,7 @@ def load_protobuf(input_name, return_dict=True):
 
     # Delete them from the filename queue
     filenames.remove(valid)
-    print(filenames)
+    print('Training Files: %s' %filenames)
 
     # now load the remaining files
     filename_queue = tf.train.string_input_producer(filenames, num_epochs=None)
@@ -268,7 +268,7 @@ def load_validation_set(input_name, valid=True):
         if str(FLAGS.validation_file) in filenames1[i]:
             filenames.append(filenames1[i])
 
-    print (filenames)
+    print ('Test Files: %s' %filenames)
 
     # Load the filename queue
     filename_queue = tf.train.string_input_producer(filenames, shuffle=False)

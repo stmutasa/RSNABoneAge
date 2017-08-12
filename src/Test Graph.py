@@ -18,13 +18,12 @@ _author_ = 'Simi'
 FLAGS = tf.app.flags.FLAGS
 
 # Define some of the immutable variables
-# Train and validation set sizes: YG: 206/51, OG: 340/85, OM: 346/86
+# Train and validation set sizes: YG: 206/51, OG: 56, OM: 56
 tf.app.flags.DEFINE_string('train_dir', 'training/', """Directory to write event logs and save checkpoint files""")
 tf.app.flags.DEFINE_integer('model', 2, """1 Y=F, 2=OF, 3=YM, 4=OM""")
-tf.app.flags.DEFINE_integer('num_epochs', 1, """Number of epochs to run""")
-tf.app.flags.DEFINE_integer('epoch_size', 56, """Test examples: OF: 508""")
-tf.app.flags.DEFINE_integer('print_interval', 1, """How often to print a summary to console during training""")
+tf.app.flags.DEFINE_integer('epoch_size', 60, """Test examples: OF: 508""")
 tf.app.flags.DEFINE_integer('batch_size', 56, """Number of images to process in a batch.""")
+tf.app.flags.DEFINE_integer('num_epochs', 60, """how many epochs to run""")
 tf.app.flags.DEFINE_string('validation_file', 'test', "Which protocol buffer will be used fo validation")
 
 # Hyperparameters:
@@ -63,7 +62,7 @@ def test():
         var_restore = var_ema.variables_to_restore()
 
         # Initialize the saver
-        saver = tf.train.Saver(var_restore, max_to_keep=5)
+        saver = tf.train.Saver(var_restore, max_to_keep=1)
 
         best_MAE = 0.9
 

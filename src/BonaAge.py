@@ -30,19 +30,15 @@ tf.app.flags.DEFINE_string('data_dir', 'data/raw/', """Path to the data director
 TOWER_NAME = 'tower'  # If training on multiple GPU's, prefix all op names with tower_name
 
 
-def forward_pass(images, phase_train1=True, bts=0):
-    """ This function builds the network architecture and performs the forward pass
-        Args: Images = our input dictionary
-        Returns: Logits (log odds units)
-        Use tf.get_variable() in case we have multiple GPU's. get_variable creates or retreives a variable only in the
-        scope defined by the block of code under variable_scope. This allows us to reuse variables in each block"""
-    # normal kernel sizes: 96, 2048, 1024, 1024, 1024, 1024, 512
-
-    # Adjust the batch size for training versus testing
-    if bts:
-        batch_size = bts
-    else:
-        batch_size = FLAGS.batch_size
+def forward_pass(images, phase_train1=True):
+    """
+    This function builds the network architecture and performs the forward pass
+    Two main architectures depending on where to insert the inception or residual layer
+    :param images: Images to analyze
+    :param phase_train1: bool, whether this is the training phase or testing phase
+    :return: logits: the predicted age from the network
+    :return: l2: the value of the l2 loss
+    """
 
     # Set Phase train variable
     phase_train = tf.Variable(phase_train1, trainable=False, dtype=tf.bool)
@@ -85,7 +81,7 @@ def forward_pass(images, phase_train1=True, bts=0):
         B2 = tf.Variable(initial_value=initial, name='Bias2')
 
         # Define the two layers of the localisation network
-        H1 = tf.nn.tanh(tf.matmul(tf.zeros([batch_size, 16 * 16 * 128]), W1) + B1)
+        H1 = tf.nn.tanh(tf.matmul(tf.zeros([FLAGS.batch_size, 16 * 16 * 128]), W1) + B1)
         H2 = tf.nn.tanh(tf.matmul(H1, W2) + B2)
 
         # Define the output size to the original dimensions
@@ -97,7 +93,7 @@ def forward_pass(images, phase_train1=True, bts=0):
 
     # The Fc7 layer Dimensions: _, 128
     with tf.variable_scope('linear1') as scope:
-        reshape = tf.reshape(conv5, [batch_size, -1])  # [batch, ?]
+        reshape = tf.reshape(conv5, [FLAGS.batch_size, -1])  # [batch, ?]
         dim = reshape.get_shape()[1].value  # Get columns for the matrix multiplication
         weights = tf.get_variable('weights', shape=[dim, 128], initializer=tf.truncated_normal_initializer(stddev=5e-2))
         tf.add_to_collection('weights', weights)
@@ -109,9 +105,9 @@ def forward_pass(images, phase_train1=True, bts=0):
     with tf.variable_scope('linear2') as scope:
         W = tf.get_variable('Weights', shape=[128, 1], initializer=tf.truncated_normal_initializer(stddev=5e-2))
         tf.add_to_collection('weights', W)
-        b = tf.Variable(np.ones(batch_size), name='Bias', dtype=tf.float32)
+        b = tf.Variable(np.ones(FLAGS.batch_size), name='Bias', dtype=tf.float32)
         Logits = tf.add(tf.matmul(fc7, W), b, name=scope.name)
-        Logits = tf.slice(Logits, [0, 0], [batch_size, 1])
+        Logits = tf.slice(Logits, [0, 0], [FLAGS.batch_size, 1])
         Logits = tf.transpose(Logits)
 
     # Retreive the weights collection
@@ -509,7 +505,7 @@ def after_run(predictions1, label1, loss1, loss_value, step, duration, mae=0):
     # Print the summary
     np.set_printoptions(precision=1)  # use numpy to print only the first sig fig
     print('Eg. Predictions: Network(Real): %.1f (%.1f), %.1f (%.1f), %.1f (%.1f), %.1f (%.1f), '
-          'MSE: %.4f, MAE: %.2f Yrs, Train Accuracy: %.32 %%'
+          'MSE: %.4f, MAE: %.2f Yrs, Train Accuracy: %.2f %%'
           % (predictions[0], label[0], predictions[1], label[1], predictions[2],
              label[2], predictions[3], label[3], loss1, mae, acc))
 
