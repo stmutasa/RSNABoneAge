@@ -53,8 +53,22 @@ def train():
         # Perform the forward pass:
         logits, l2loss = Competition.forward_pass(data['image'], phase_train1=True)
 
+        # Make our ground truth the real age since the bone ages are normal
+        avg_label = tf.transpose(tf.divide(data['reading'], 19))
+
+        # Get some metrics
+        predictions2 = tf.transpose(tf.multiply(logits, 19))
+        labels2 = tf.transpose(tf.multiply(avg_label, 19))
+
+        # Get MAE
+        MAE = tf.metrics.mean_absolute_error(labels2, predictions2)
+
+        # Make a summary of MAE
+        tf.summary.scalar('MAE', MAE[1])
+
         # Calculate the SCE loss. (softmax cross entropy with logits)
-        MSE_loss = Competition.total_loss(logits, data['reading'])
+        #MSE_loss = Competition.total_loss(logits, data['reading'])
+        MSE_loss = Competition.total_loss(logits, avg_label)
 
         # Add the L2 regularization loss
         loss = tf.add(MSE_loss, l2loss, name='TotalLoss')
@@ -121,7 +135,7 @@ def train():
                         l2, sce, tot = mon_sess.run([l2loss, MSE_loss, loss])
 
                         # Also retreive the predictions and labels
-                        preds, labs = mon_sess.run([logits, data['reading']])
+                        preds, labs = mon_sess.run([predictions2, labels2])
 
                         # Convert to numpy arrays
                         predictions = np.squeeze(preds.astype(np.float))

@@ -17,6 +17,7 @@ import os
 import SODLoader as SDL
 import SODNetwork as SDN
 import numpy as np
+import spatial_transformer as st
 import tensorflow as tf
 
 # Define loader instances
@@ -28,7 +29,6 @@ FLAGS = tf.app.flags.FLAGS
 
 
 def forward_pass(images, phase_train1=True):
-
     """
     This function builds the network architecture and performs the forward pass
     Two main architectures depending on where to insert the inception or residual layer
@@ -42,32 +42,71 @@ def forward_pass(images, phase_train1=True):
     phase_train = tf.Variable(phase_train1, trainable=False, dtype=tf.bool)
 
     # The first convolutional layer. Dimensions: 4, 128, 128, 64
-    conv1 = sdn.convolution('Conv1', images, 7, 16, 2, phase_train=phase_train, BN=False, relu=False)
+    conv1 = convolution('Conv1', images, 7, 64, phase_train=phase_train)
 
     # The second convolutional layer    Dimensions: _, 64, 64, 128
-    conv2 = sdn.residual_layer('Conv2', conv1, 5, 32, 2, phase_train=phase_train, BN=True, relu=True)
+    conv2 = convolution('Conv2', conv1, 5, 128, phase_train=phase_train)
 
     # Inception layer
-    inception = sdn.inception_layer('Inception', conv2, 64, 2, phase_train=phase_train, BN=False, relu=False)
+    # inception = inception_layer('Inception', conv2, 32, phase_train=phase_train)
 
     # The third convolutional layer Dimensions: _,32, 32, 256
-    conv3 = sdn.residual_layer('Conv3', inception, 3, 128, 2, phase_train=phase_train, BN=False, relu=False)
+    conv3 = convolution('Conv3', conv2, 3, 256, phase_train=phase_train)
 
     # Insert inception/residual layer here. Output is same dimensions as previous layer
-    conv4 = sdn.residual_layer('Conv4', conv3, 3, 256, 2, phase_train=phase_train, BN=True, relu=True)
+    residual = residual_layer('Residual', conv3, 3, 64, 'SAME', phase_train)
+
+    # The 4th convolutional layer   Dimensions: _, 16, 16, 128
+    conv4 = convolution('Conv4', residual, 3, 128, phase_train=phase_train)
 
     # The affine transform layer here: Dimensions: _, 16, 16, 128
-    h_trans = sdn.spatial_transform_layer('Transformer', conv4)
+    with tf.variable_scope('Transformer') as scope:
+
+        # Set up the localisation network to calculate floc(u):
+        W1 = tf.get_variable('Weights1', shape=[16 * 16 * 128, 20],
+                             initializer=tf.truncated_normal_initializer(stddev=5e-2))
+        B1 = tf.get_variable('Bias1', shape=[20], initializer=tf.truncated_normal_initializer(stddev=5e-2))
+        W2 = tf.get_variable('Weights2', shape=[20, 6], initializer=tf.truncated_normal_initializer(stddev=5e-2))
+
+        # Add weights to collection
+        tf.add_to_collection('weights', W1)
+        tf.add_to_collection('weights', W2)
+
+        # Always start with the identity transformation
+        initial = np.array([[1.0, 0, 0], [0, 1.0, 0]])
+        initial = initial.astype('float32')
+        initial = initial.flatten()
+        B2 = tf.Variable(initial_value=initial, name='Bias2')
+
+        # Define the two layers of the localisation network
+        H1 = tf.nn.tanh(tf.matmul(tf.zeros([FLAGS.batch_size, 16 * 16 * 128]), W1) + B1)
+        H2 = tf.nn.tanh(tf.matmul(H1, W2) + B2)
+
+        # Define the output size to the original dimensions
+        output_size = (16, 16)
+        h_trans = st.transformer(conv4, H2, output_size)
 
     # The 5th convolutional layer, Dimensions: _, 8, 8, 128
-    conv5 = sdn.convolution('Conv5', h_trans, 3, 512, 2, phase_train=phase_train)
-    print (conv5, images)
+    conv5 = convolution('Conv5', h_trans, 1, 128, phase_train=phase_train)
 
     # The Fc7 layer Dimensions: _, 128
-    fc7 = sdn.fc7_layer('FC7', conv5, 64, True, phase_train, FLAGS.dropout_factor, BN=True)
+    with tf.variable_scope('linear1') as scope:
+        reshape = tf.reshape(conv5, [FLAGS.batch_size, -1])  # [batch, ?]
+        dim = reshape.get_shape()[1].value  # Get columns for the matrix multiplication
+        weights = tf.get_variable('weights', shape=[dim, 128], initializer=tf.truncated_normal_initializer(stddev=5e-2))
+        tf.add_to_collection('weights', weights)
+        fc7 = tf.nn.relu(tf.matmul(reshape, weights), name=scope.name)  # returns mat of size [batch x 128
+        if phase_train1: fc7 = tf.nn.dropout(fc7, keep_prob=FLAGS.dropout_factor)  # Apply dropout here
+        sdn._activation_summary(fc7)
 
-    # Output layer
-    Predictions = sdn.linear_layer('Output', fc7, 1)
+    # The linear layer Dimensions: 1x_
+    with tf.variable_scope('linear2') as scope:
+        W = tf.get_variable('Weights', shape=[128, 1], initializer=tf.truncated_normal_initializer(stddev=5e-2))
+        tf.add_to_collection('weights', W)
+        b = tf.Variable(np.ones(FLAGS.batch_size), name='Bias', dtype=tf.float32)
+        Logits = tf.add(tf.matmul(fc7, W), b, name=scope.name)
+        Logits = tf.slice(Logits, [0, 0], [FLAGS.batch_size, 1])
+        Logits = tf.transpose(Logits)
 
     # Retreive the weights collection
     weights = tf.get_collection('weights')
@@ -81,7 +120,63 @@ def forward_pass(images, phase_train1=True):
     # Activation summary
     tf.summary.scalar('L2_Loss', L2_loss)
 
-    return Predictions, L2_loss
+    return Logits, L2_loss  # Return whatever the name of the final logits variable is
+
+
+def forward_pass_sdn(images, phase_train1=True):
+    """
+    This function builds the network architecture and performs the forward pass
+    Two main architectures depending on where to insert the inception or residual layer
+    :param images: Images to analyze
+    :param phase_train1: bool, whether this is the training phase or testing phase
+    :return: logits: the predicted age from the network
+    :return: l2: the value of the l2 loss
+    """
+
+    # Set Phase train variable
+    phase_train = tf.Variable(phase_train1, trainable=False, dtype=tf.bool)
+
+    # The first convolutional layer. Dimensions: 4, 128, 128, 64
+    conv1 = sdn.convolution('Conv1', images, 7, 64, phase_train=phase_train)
+
+    # The second convolutional layer    Dimensions: _, 64, 64, 128
+    conv2 = sdn.convolution('Conv2', conv1, 5, 128, phase_train=phase_train)
+
+    # The third convolutional layer Dimensions: _,32, 32, 256
+    conv3 = sdn.convolution('Conv3', conv2, 3, 256, phase_train=phase_train)
+
+    # Insert inception/residual layer here. Output is same dimensions as previous layer
+    residual = sdn.residual_layer('Residual', conv3, 3, 64, 1, 'SAME', phase_train)
+
+    # The 4th convolutional layer   Dimensions: _, 16, 16, 128
+    conv4 = sdn.convolution('Conv4', residual, 3, 128, phase_train=phase_train)
+
+    # The affine transform layer here: Dimensions: _, 16, 16, 128
+    h_trans = sdn.spatial_transform_layer('Transformer', conv4)
+
+    # The 5th convolutional layer, Dimensions: _, 8, 8, 128
+    conv5 = sdn.convolution('Conv5', h_trans, 1, 128, phase_train=phase_train)
+
+    # The Fc7 layer Dimensions: _, 128
+    fc7 = sdn.fc7_layer('FC7', conv5, 128, True, phase_train, FLAGS.dropout_factor, BN=True)
+
+    # The linear layer Dimensions: 1x_
+    Predictions = sdn.linear_layer('Output', fc7, 1)
+
+    # Retreive the weights collection
+    weights = tf.get_collection('weights')
+
+    # Sum the losses
+    L2_loss = tf.multiply(tf.add_n([tf.nn.l2_loss(v) for v in weights]), FLAGS.l2_gamma)
+
+    # Add it to the collection
+    tf.add_to_collection('losses', L2_loss)
+
+    # Activation summary
+    tf.summary.scalar('L2_Loss', L2_loss)
+    print (Predictions, conv5)
+
+    return Predictions, L2_loss  # Return whatever the name of the final logits variable is
 
 
 def total_loss(logits, labels):
@@ -168,7 +263,7 @@ def Inputs(skip=True):
     return data, validation
 
 
-def load_protobuf():
+def load_validation_set():
 
     """
     Loads protocol buffer
@@ -176,17 +271,18 @@ def load_protobuf():
     :return:
     """
 
-    # Load all the filenames in glob
-    filenames = sdl.retreive_filelist('tfrecords', path='data/')
+    # retreive file list
+    filenames1 = sdl.retreive_filelist('tfrecords', path='data/')
 
-    # Define the filenames to remove
-    for i in range (0, len(filenames)):
-        if str(FLAGS.validation_file) in filenames[i]:
-            valid = filenames[i]
+    # The real filenames
+    filenames = []
 
-    # Delete them from the filename queue
-    filenames.remove(valid)
-    print('Training Files: %s' %filenames)
+    # Retreive only the right filename
+    for i in range(0, len(filenames1)):
+        if str(FLAGS.validation_file) in filenames1[i]:
+            filenames.append(filenames1[i])
+
+    print('Test Files: %s' % filenames)
 
     # now load the remaining files
     filename_queue = tf.train.string_input_producer(filenames, num_epochs=None)
@@ -215,7 +311,7 @@ def load_protobuf():
     ptid = tf.string_to_number(features['ptid'], tf.float32)
 
     # create float summary image
-    tf.summary.image('Train Image', tf.reshape(image, shape=[1, FLAGS.dims, FLAGS.dims, 1]), max_outputs=4)
+    tf.summary.image('Testing Image', tf.reshape(image, shape=[1, FLAGS.dims, FLAGS.dims, 1]), max_outputs=4)
 
     # Return data as a dictionary by default
     final_data = {'image': image, 'reading': reading, 'age': age, 'sex': sex, 'ptid':ptid}
@@ -226,24 +322,23 @@ def load_protobuf():
     return returned_dict
 
 
-def load_validation_set():
+def load_protobuf():
     """
     Same as load protobuf() but loads the validation set
     :return:
     """
 
-    # retreive file list
-    filenames1 = sdl.retreive_filelist('tfrecords', path='data/')
+    # Load all the filenames in glob
+    filenames = sdl.retreive_filelist('tfrecords', path='data/')
 
-    # The real filenames
-    filenames = []
+    # Define the filenames to remove
+    for i in range(0, len(filenames)):
+        if str(FLAGS.validation_file) in filenames[i]:
+            valid = filenames[i]
 
-    # Retreive only the right filename
-    for i in range(0, len(filenames1)):
-        if str(FLAGS.validation_file) in filenames1[i]:
-            filenames.append(filenames1[i])
-
-    print ('Test Files: %s' %filenames)
+    # Delete them from the filename queue
+    filenames.remove(valid)
+    print('Training Files: %s' % filenames)
 
     # Load the filename queue
     filename_queue = tf.train.string_input_producer(filenames, shuffle=False)
@@ -262,9 +357,8 @@ def load_validation_set():
     features = tf.parse_single_example(serialized_example, features=feature_dict)
 
     # Change the raw image data to 8 bit integers first
-    image = tf.decode_raw(features['data'], tf.float32)  # Set this examples image to a blank tensor with integer data
-    image = tf.reshape(image, shape=[FLAGS.dims, FLAGS.dims,
-                                     1])  # Set the dimensions of the image ( must equal input dims here)
+    image = tf.decode_raw(features['data'], tf.float32)
+    image = tf.reshape(image, shape=[FLAGS.dims, FLAGS.dims, 1])
 
     # Cast all our data to 32 bit floating point units. Cannot convert string to number unless you use that function
     id = tf.cast(features['id'], tf.float32)
@@ -287,7 +381,7 @@ def load_validation_set():
     image = tf.random_crop(image, [FLAGS.dims, FLAGS.dims, 1])
 
     # create float summary image
-    tf.summary.image('Testing Image', tf.reshape(image, shape=[1, FLAGS.dims, FLAGS.dims, 1]), max_outputs=4)
+    tf.summary.image('Training Image', tf.reshape(image, shape=[1, FLAGS.dims, FLAGS.dims, 1]), max_outputs=4)
 
     # Return data as a dictionary by default
     final_data = {'image': image, 'reading': reading, 'age': age, 'sex': sex, 'ptid': ptid}
@@ -433,3 +527,142 @@ def pre_process_RSNA(gender='S', dims=256, xvals = 5):
 
     # Close the file after writing
     for y in range(xvals): writer[y].close()
+
+
+def convolution(scope, X, F, K, S=2, padding='SAME', phase_train=None):
+    """
+    This is a wrapper for convolutions
+    :param scope:
+    :param X: Output of the prior layer
+    :param F: Convolutional filter size
+    :param K: Number of feature maps
+    :param S: Stride
+    :param padding:
+    :param phase_train: For batch norm implementation
+    :return:
+    """
+
+    # Set channel size based on input depth
+    C = X.get_shape().as_list()[3]
+
+    # Set the scope
+    with tf.variable_scope(scope) as scope:
+
+        # Define the Kernel. Can use Xavier init: contrib.layers.xavier_initializer())
+        kernel = tf.get_variable('Weights', shape=[F, F, C, K],
+                                 initializer=tf.truncated_normal_initializer(stddev=5e-2))
+
+        # Add to the weights collection
+        tf.add_to_collection('weights', kernel)
+
+        # Perform the actual convolution
+        conv = tf.nn.conv2d(X, kernel, [1, S, S, 1], padding=padding)  # Create a 2D tensor with BATCH_SIZE rows
+
+        # Apply the batch normalization. Updates weights during training phase only
+        norm = tf.cond(phase_train,
+                lambda: tf.contrib.layers.batch_norm(conv, activation_fn=None, center=True, scale=True,
+                                                     updates_collections=None, is_training=True, reuse=None,
+                                                     scope=scope, decay=0.9, epsilon=1e-5),
+                lambda: tf.contrib.layers.batch_norm(conv, activation_fn=None, center=True, scale=True,
+                                                     updates_collections=None, is_training=False, reuse=True,
+                                                     scope=scope, decay=0.9, epsilon=1e-5))
+
+
+
+        # Relu activation
+        conv = tf.nn.relu(norm, name=scope.name)
+
+        # Create a histogram/scalar summary of the conv1 layer
+        sdn._activation_summary(conv)
+
+        return conv
+
+
+def inception_layer(scope, X, K, S=1, padding='SAME', phase_train=None):
+    """
+    This function implements an inception layer or "network within a network"
+    :param scope:
+    :param X: Output of the previous layer
+    :param K: Feature maps in the inception layer (will be multiplied by 4 during concatenation)
+    :param S: Stride
+    :param padding:
+    :param phase_train: For batch norm implementation
+    :return: the inception layer output after concat
+    """
+
+    # Implement an inception layer here ----------------
+    with tf.variable_scope(scope) as scope:
+
+        # First branch, 1x1x64 convolution
+        inception1 = convolution('Inception1', X, 1, K, S, phase_train=phase_train)  # 64x64x64
+
+        # Second branch, 1x1 convolution then 3x3 convolution
+        inception2a = convolution('Inception2a', X, 1, 1, 1, phase_train=phase_train)  # 64x64x1
+        inception2 = convolution('Inception2', inception2a, 3, K, S, phase_train=phase_train)  # 64x64x64
+
+        # Third branch, 1x1 convolution then 5x5 convolution:
+        inception3a = convolution('Inception3a', X, 1, 1, 1, phase_train=phase_train)  # 64x64x1
+        inception3 = convolution('Inception3', inception3a, 5, K, S, phase_train=phase_train)  # 64x64x64
+
+        # Fourth branch, max pool then 1x1 conv:
+        inception4a = tf.nn.max_pool(X, [1, 3, 3, 1], [1, 1, 1, 1], padding)  # 64x64x256
+        inception4 = convolution('Inception4', inception4a, 1, K, S, phase_train=phase_train)  # 64x64x64
+
+        # Concatenate the results for dimension of 64,64,256
+        inception = tf.concat([tf.concat([tf.concat([inception1, inception2], axis=3),
+                                          inception3], axis=3), inception4], axis=3)
+
+        return inception
+
+
+def residual_layer(scope, X, F, K, padding='SAME', phase_train=None):
+    """
+    This is a wrapper for implementing a hybrid residual layer with inception layer as F(x)
+    :param scope:
+    :param X: Output of the previous layer
+    :param F: Dimensions of the second convolution in F(x) - the non inception layer one
+    :param K: Feature maps in the inception layer (will be multiplied by 4 during concatenation)
+    :param S: Stride
+    :param padding:
+    :param phase_train: For batch norm implementation
+    :return:
+    """
+
+    # Set channel size based on input depth
+    C = X.get_shape().as_list()[3]
+
+    # Set the scope. Implement a residual layer below: Conv-relu-conv-residual-relu
+    with tf.variable_scope(scope) as scope:
+
+        # The first layer is an inception layer
+        conv1 = inception_layer(scope, X, K, 1, phase_train=phase_train)
+
+        # Define the Kernel for conv2. Which is a normal conv layer
+        kernel = tf.get_variable('Weights', shape=[F, F, C, K*4],
+                                 initializer=tf.truncated_normal_initializer(stddev=5e-2))
+
+        # Add this kernel to the weights collection for L2 reg
+        tf.add_to_collection('weights', kernel)
+
+        # Perform the actual convolution
+        conv2 = tf.nn.conv2d(conv1, kernel, [1, 1, 1, 1], padding=padding)  # Create a 2D tensor with BATCH_SIZE rows
+
+        # Add in the residual here
+        residual = tf.add(conv2, X)
+
+        # Apply the batch normalization. Updates weights during training phase only
+        norm = tf.cond(phase_train,
+                       lambda: tf.contrib.layers.batch_norm(residual, activation_fn=None, center=True, scale=True,
+                                                            updates_collections=None, is_training=True, reuse=None,
+                                                            scope=scope, decay=0.9, epsilon=1e-5),
+                       lambda: tf.contrib.layers.batch_norm(residual, activation_fn=None, center=True, scale=True,
+                                                            updates_collections=None, is_training=False, reuse=True,
+                                                            scope=scope, decay=0.9, epsilon=1e-5))
+
+        # Relu activation
+        conv = tf.nn.relu(norm, name=scope.name)
+
+        # Create a histogram/scalar summary of the conv1 layer
+        sdn._activation_summary(conv)
+
+        return conv

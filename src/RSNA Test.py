@@ -24,7 +24,7 @@ tf.app.flags.DEFINE_integer('cross_validations', 8, "X fold cross validation hyp
 
 # Female = 852 - 12 @ 71, Male = 990
 tf.app.flags.DEFINE_integer('epoch_size', 852, """Test examples: OF: 508""")
-tf.app.flags.DEFINE_integer('batch_size', 71, """Number of images to process in a batch.""")
+tf.app.flags.DEFINE_integer('batch_size', 64, """Number of images to process in a batch.""")
 
 # Hyperparameters:
 tf.app.flags.DEFINE_float('dropout_factor', 0.5, """ p value for the dropout layer""")
@@ -41,10 +41,15 @@ def test():
         _, validation = Competition.Inputs(skip=True)
 
         # Perform the forward pass:
-        logits, l2loss = Competition.forward_pass(validation['image'], phase_train1=True)
+        logits, _ = Competition.forward_pass(validation['image'], phase_train1=True)
 
-        # To retreive labels
-        labels = validation['reading']
+        # Make our ground truth the real age since the bone ages are normal
+        avg_label = tf.transpose(tf.divide(validation['reading'], 19))
+
+        # Get some metrics
+        predictions2 = tf.transpose(tf.multiply(logits, 19))
+        labels2 = tf.transpose(tf.multiply(avg_label, 19))
+        print (validation['reading'], avg_label, predictions2, labels2)
 
         # Initialize variables operation
         var_init = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
@@ -100,7 +105,7 @@ def test():
                     while step < max_steps:
 
                         # Retreive the predictions and labels
-                        preds, labs = mon_sess.run([logits, validation['reading']])
+                        preds, labs = mon_sess.run([predictions2, labels2])
 
                         # Convert to numpy arrays
                         predictions = np.squeeze(preds.astype(np.float))
