@@ -6,7 +6,7 @@
       <excludeFolder url="file://$MODULE_DIR$/src/female init" />
       <excludeFolder url="file://$MODULE_DIR$/src/male init" />
     </content>
-    <orderEntry type="jdk" jdkName="Python 3.5.3 (~/anaconda3/envs/tensorflow/bin/python3.5)" jdkType="Python SDK" />
+    <orderEntry type="jdk" jdkName="Python 3.5.2 (~/anaconda3/envs/kagglect/bin/python)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
   <component name="TestRunnerService">
