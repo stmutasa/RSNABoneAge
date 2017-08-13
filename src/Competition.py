@@ -17,7 +17,6 @@ import os
 import SODLoader as SDL
 import SODNetwork as SDN
 import numpy as np
-import spatial_transformer as st
 import tensorflow as tf
 
 # Define loader instances
@@ -42,111 +41,17 @@ def forward_pass(images, phase_train1=True):
     phase_train = tf.Variable(phase_train1, trainable=False, dtype=tf.bool)
 
     # The first convolutional layer. Dimensions: 4, 128, 128, 64
-    conv1 = convolution('Conv1', images, 7, 64, phase_train=phase_train)
-
-    # The second convolutional layer    Dimensions: _, 64, 64, 128
-    conv2 = convolution('Conv2', conv1, 5, 128, phase_train=phase_train)
-
-    # Inception layer
-    # inception = inception_layer('Inception', conv2, 32, phase_train=phase_train)
-
-    # The third convolutional layer Dimensions: _,32, 32, 256
-    conv3 = convolution('Conv3', conv2, 3, 256, phase_train=phase_train)
-
-    # Insert inception/residual layer here. Output is same dimensions as previous layer
-    residual = residual_layer('Residual', conv3, 3, 64, 'SAME', phase_train)
-
-    # The 4th convolutional layer   Dimensions: _, 16, 16, 128
-    conv4 = convolution('Conv4', residual, 3, 128, phase_train=phase_train)
-
-    # The affine transform layer here: Dimensions: _, 16, 16, 128
-    with tf.variable_scope('Transformer') as scope:
-
-        # Set up the localisation network to calculate floc(u):
-        W1 = tf.get_variable('Weights1', shape=[16 * 16 * 128, 20],
-                             initializer=tf.truncated_normal_initializer(stddev=5e-2))
-        B1 = tf.get_variable('Bias1', shape=[20], initializer=tf.truncated_normal_initializer(stddev=5e-2))
-        W2 = tf.get_variable('Weights2', shape=[20, 6], initializer=tf.truncated_normal_initializer(stddev=5e-2))
-
-        # Add weights to collection
-        tf.add_to_collection('weights', W1)
-        tf.add_to_collection('weights', W2)
-
-        # Always start with the identity transformation
-        initial = np.array([[1.0, 0, 0], [0, 1.0, 0]])
-        initial = initial.astype('float32')
-        initial = initial.flatten()
-        B2 = tf.Variable(initial_value=initial, name='Bias2')
-
-        # Define the two layers of the localisation network
-        H1 = tf.nn.tanh(tf.matmul(tf.zeros([FLAGS.batch_size, 16 * 16 * 128]), W1) + B1)
-        H2 = tf.nn.tanh(tf.matmul(H1, W2) + B2)
-
-        # Define the output size to the original dimensions
-        output_size = (16, 16)
-        h_trans = st.transformer(conv4, H2, output_size)
-
-    # The 5th convolutional layer, Dimensions: _, 8, 8, 128
-    conv5 = convolution('Conv5', h_trans, 1, 128, phase_train=phase_train)
-
-    # The Fc7 layer Dimensions: _, 128
-    with tf.variable_scope('linear1') as scope:
-        reshape = tf.reshape(conv5, [FLAGS.batch_size, -1])  # [batch, ?]
-        dim = reshape.get_shape()[1].value  # Get columns for the matrix multiplication
-        weights = tf.get_variable('weights', shape=[dim, 128], initializer=tf.truncated_normal_initializer(stddev=5e-2))
-        tf.add_to_collection('weights', weights)
-        fc7 = tf.nn.relu(tf.matmul(reshape, weights), name=scope.name)  # returns mat of size [batch x 128
-        if phase_train1: fc7 = tf.nn.dropout(fc7, keep_prob=FLAGS.dropout_factor)  # Apply dropout here
-        sdn._activation_summary(fc7)
-
-    # The linear layer Dimensions: 1x_
-    with tf.variable_scope('linear2') as scope:
-        W = tf.get_variable('Weights', shape=[128, 1], initializer=tf.truncated_normal_initializer(stddev=5e-2))
-        tf.add_to_collection('weights', W)
-        b = tf.Variable(np.ones(FLAGS.batch_size), name='Bias', dtype=tf.float32)
-        Logits = tf.add(tf.matmul(fc7, W), b, name=scope.name)
-        Logits = tf.slice(Logits, [0, 0], [FLAGS.batch_size, 1])
-        Logits = tf.transpose(Logits)
-
-    # Retreive the weights collection
-    weights = tf.get_collection('weights')
-
-    # Sum the losses
-    L2_loss = tf.multiply(tf.add_n([tf.nn.l2_loss(v) for v in weights]), FLAGS.l2_gamma)
-
-    # Add it to the collection
-    tf.add_to_collection('losses', L2_loss)
-
-    # Activation summary
-    tf.summary.scalar('L2_Loss', L2_loss)
-
-    return Logits, L2_loss  # Return whatever the name of the final logits variable is
-
-
-def forward_pass_sdn(images, phase_train1=True):
-    """
-    This function builds the network architecture and performs the forward pass
-    Two main architectures depending on where to insert the inception or residual layer
-    :param images: Images to analyze
-    :param phase_train1: bool, whether this is the training phase or testing phase
-    :return: logits: the predicted age from the network
-    :return: l2: the value of the l2 loss
-    """
-
-    # Set Phase train variable
-    phase_train = tf.Variable(phase_train1, trainable=False, dtype=tf.bool)
-
-    # The first convolutional layer. Dimensions: 4, 128, 128, 64
     conv1 = sdn.convolution('Conv1', images, 7, 64, phase_train=phase_train)
 
     # The second convolutional layer    Dimensions: _, 64, 64, 128
     conv2 = sdn.convolution('Conv2', conv1, 5, 128, phase_train=phase_train)
 
     # The third convolutional layer Dimensions: _,32, 32, 256
-    conv3 = sdn.convolution('Conv3', conv2, 3, 256, phase_train=phase_train)
+    conv3 = sdn.convolution('Conv3', conv2, 3, 256, phase_train=phase_train, BN=False, relu=False)
 
     # Insert inception/residual layer here. Output is same dimensions as previous layer
-    residual = sdn.residual_layer('Residual', conv3, 3, 64, 1, 'SAME', phase_train)
+    #residual = sdn.res_inc_layer('ResInc1', conv3, 3, 64, phase_train=phase_train)
+    residual = residual_layer('Residual', conv3, 3, 64, 'SAME', phase_train)
 
     # The 4th convolutional layer   Dimensions: _, 16, 16, 128
     conv4 = sdn.convolution('Conv4', residual, 3, 128, phase_train=phase_train)
@@ -157,11 +62,11 @@ def forward_pass_sdn(images, phase_train1=True):
     # The 5th convolutional layer, Dimensions: _, 8, 8, 128
     conv5 = sdn.convolution('Conv5', h_trans, 1, 128, phase_train=phase_train)
 
-    # The Fc7 layer Dimensions: _, 128
-    fc7 = sdn.fc7_layer('FC7', conv5, 128, True, phase_train, FLAGS.dropout_factor, BN=True)
+    # The Fc7 layer Dimensions: diff is biases
+    fc7 = sdn.fc7_layer('FC7', conv5, 128, True, phase_train, FLAGS.dropout_factor, BN=False)
 
-    # The linear layer Dimensions: 1x_
-    Predictions = sdn.linear_layer('Output', fc7, 1)
+    # The linear layer: diff is +Relu -slice, +xaviaer +bias zero
+    Predictions = sdn.linear_layer('Output', fc7, 1, phase_train=phase_train, relu=False)
 
     # Retreive the weights collection
     weights = tf.get_collection('weights')
@@ -175,6 +80,62 @@ def forward_pass_sdn(images, phase_train1=True):
     # Activation summary
     tf.summary.scalar('L2_Loss', L2_loss)
     print (Predictions, conv5)
+
+    return Predictions, L2_loss  # Return whatever the name of the final logits variable is
+
+
+def forward_pass_res(images, phase_train1=True):
+    """
+    This function builds the network architecture and performs the forward pass
+    Two main architectures depending on where to insert the inception or residual layer
+    :param images: Images to analyze
+    :param phase_train1: bool, whether this is the training phase or testing phase
+    :return: logits: the predicted age from the network
+    :return: l2: the value of the l2 loss
+    """
+
+    # Set Phase train variable
+    phase_train = tf.Variable(phase_train1, trainable=False, dtype=tf.bool)
+
+    # The first layer.
+    conv1 = sdn.convolution('Conv1', images, 5, 32, phase_train=phase_train, BN=False, relu=False)
+
+    # The second  layer
+    conv2 = sdn.residual_layer('Res1', conv1, 3, 64, 2, phase_train=phase_train, BN=False, relu=False)
+
+    # The third layer
+    conv3 = sdn.residual_layer('Res2', conv2, 3, 128, 2, phase_train=phase_train, BN=True, relu=True)
+
+    # Insert inception/residual layer here.
+    conv4 = sdn.inception_layer('Inception1', conv3, 64, 2, phase_train=phase_train, BN=False, relu=False)
+
+    # The 4th layer
+    conv5 = sdn.residual_layer('Res3', conv4, 3, 512, 2, phase_train=phase_train, BN=True, relu=True)
+
+    # The affine transform layer here:
+    h_trans = sdn.spatial_transform_layer('Transformer', conv5)
+
+    # The 5th layer
+    conv6 = sdn.convolution('Conv6', h_trans, 1, 256, phase_train=phase_train)
+
+    # The Fc7 layer Dimensions: diff is biases
+    fc7 = sdn.fc7_layer('FC7', conv6, 128, True, phase_train, FLAGS.dropout_factor, BN=False)
+
+    # The linear layer: diff is +Relu -slice, +xaviaer +bias zero
+    Predictions = sdn.linear_layer('Output', fc7, 1, phase_train=phase_train, relu=False)
+
+    # Retreive the weights collection
+    weights = tf.get_collection('weights')
+
+    # Sum the losses
+    L2_loss = tf.multiply(tf.add_n([tf.nn.l2_loss(v) for v in weights]), FLAGS.l2_gamma)
+
+    # Add it to the collection
+    tf.add_to_collection('losses', L2_loss)
+
+    # Activation summary
+    tf.summary.scalar('L2_Loss', L2_loss)
+    print (Predictions, conv6)
 
     return Predictions, L2_loss  # Return whatever the name of the final logits variable is
 
@@ -313,6 +274,9 @@ def load_validation_set():
     # create float summary image
     tf.summary.image('Testing Image', tf.reshape(image, shape=[1, FLAGS.dims, FLAGS.dims, 1]), max_outputs=4)
 
+    # Now the final resize to network dimensions
+    image = tf.image.resize_images(image, [FLAGS.network_dims, FLAGS.network_dims])
+
     # Return data as a dictionary by default
     final_data = {'image': image, 'reading': reading, 'age': age, 'sex': sex, 'ptid':ptid}
     returned_dict = {}
@@ -382,6 +346,9 @@ def load_protobuf():
 
     # create float summary image
     tf.summary.image('Training Image', tf.reshape(image, shape=[1, FLAGS.dims, FLAGS.dims, 1]), max_outputs=4)
+
+    # Now the final resize to network dimensions
+    image = tf.image.resize_images(image, [FLAGS.network_dims, FLAGS.network_dims])
 
     # Return data as a dictionary by default
     final_data = {'image': image, 'reading': reading, 'age': age, 'sex': sex, 'ptid': ptid}

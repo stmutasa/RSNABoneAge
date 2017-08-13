@@ -19,6 +19,7 @@ FLAGS = tf.app.flags.FLAGS
 
 # Define some of the immutable variables
 tf.app.flags.DEFINE_integer('dims', 256, "Size of the images")
+tf.app.flags.DEFINE_integer('network_dims', 128, "Size of the images")
 tf.app.flags.DEFINE_string('validation_file', '0', "Which protocol buffer will be used fo validation")
 tf.app.flags.DEFINE_integer('cross_validations', 8, "X fold cross validation hyperparameter")
 
@@ -41,15 +42,14 @@ def test():
         _, validation = Competition.Inputs(skip=True)
 
         # Perform the forward pass:
-        logits, _ = Competition.forward_pass(validation['image'], phase_train1=True)
+        logits, _ = Competition.forward_pass_res(validation['image'], phase_train1=True)
 
         # Make our ground truth the real age since the bone ages are normal
-        avg_label = tf.transpose(tf.divide(validation['reading'], 19))
+        avg_label = tf.divide(validation['reading'], 19)
 
         # Get some metrics
-        predictions2 = tf.transpose(tf.multiply(logits, 19))
-        labels2 = tf.transpose(tf.multiply(avg_label, 19))
-        print (validation['reading'], avg_label, predictions2, labels2)
+        predictions2 = tf.multiply(logits, 19)
+        labels2 = tf.multiply(avg_label, 19)
 
         # Initialize variables operation
         var_init = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())

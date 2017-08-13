@@ -17,6 +17,7 @@ FLAGS = tf.app.flags.FLAGS
 
 # Global variables
 tf.app.flags.DEFINE_integer('dims', 256, "Size of the images")
+tf.app.flags.DEFINE_integer('network_dims', 128, "Size of the images")
 tf.app.flags.DEFINE_string('validation_file', '0', "Which protocol buffer will be used fo validation")
 tf.app.flags.DEFINE_integer('cross_validations', 8, "X fold cross validation hyperparameter")
 
@@ -37,7 +38,7 @@ tf.app.flags.DEFINE_float('l2_gamma', 2e-4, """ The gamma value for regularizati
 tf.app.flags.DEFINE_float('moving_avg_decay', 0.999, """ The decay rate for the moving average tracker""")
 
 # Hyperparameters to control the optimizer
-tf.app.flags.DEFINE_float('learning_rate', 5e-5, """Initial learning rate""")
+tf.app.flags.DEFINE_float('learning_rate', 1e-4, """Initial learning rate""")
 tf.app.flags.DEFINE_float('beta1', 0.9, """ The beta 1 value for the adam optimizer""")
 tf.app.flags.DEFINE_float('beta2', 0.999, """ The beta 1 value for the adam optimizer""")
 
@@ -51,14 +52,14 @@ def train():
         data, _ = Competition.Inputs(skip=True)
 
         # Perform the forward pass:
-        logits, l2loss = Competition.forward_pass(data['image'], phase_train1=True)
+        logits, l2loss = Competition.forward_pass_res(data['image'], phase_train1=True)
 
         # Make our ground truth the real age since the bone ages are normal
-        avg_label = tf.transpose(tf.divide(data['reading'], 19))
+        avg_label = tf.divide(data['reading'], 19)
 
         # Get some metrics
-        predictions2 = tf.transpose(tf.multiply(logits, 19))
-        labels2 = tf.transpose(tf.multiply(avg_label, 19))
+        predictions2 = tf.multiply(logits, 19)
+        labels2 = tf.multiply(avg_label, 19)
 
         # Get MAE
         MAE = tf.metrics.mean_absolute_error(labels2, predictions2)
