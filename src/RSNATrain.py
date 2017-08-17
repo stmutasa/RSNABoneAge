@@ -17,30 +17,33 @@ FLAGS = tf.app.flags.FLAGS
 
 # Global variables
 tf.app.flags.DEFINE_integer('dims', 256, "Size of the images")
-tf.app.flags.DEFINE_integer('network_dims', 128, "Size of the images")
+tf.app.flags.DEFINE_integer('network_dims', 256, "Size of the images")
 tf.app.flags.DEFINE_string('validation_file', '0', "Which protocol buffer will be used fo validation")
 tf.app.flags.DEFINE_integer('cross_validations', 8, "X fold cross validation hyperparameter")
 
 # Define some of the immutable variables
 tf.app.flags.DEFINE_string('train_dir', 'training/', """Directory to write event logs and save checkpoint files""")
-tf.app.flags.DEFINE_integer('num_epochs', 900, """Number of epochs to run""")
-tf.app.flags.DEFINE_string('gender', 'F', """Which version to run""")
+tf.app.flags.DEFINE_integer('num_epochs', 1200, """Number of epochs to run""")
+tf.app.flags.DEFINE_string('gender', 'M', """Which version to run""")
 
-# Female = 5958, 93, 950 @ 64, Male = 6934
-tf.app.flags.DEFINE_integer('epoch_size', 5958, """How many images were loaded""")
-tf.app.flags.DEFINE_integer('print_interval', 93, """How often to print a summary to console during training""")
-tf.app.flags.DEFINE_integer('checkpoint_steps', 950, """How many STEPS to wait before saving a checkpoint""")
+# Female = 5958, 950 @ 64, Male = 6934, 108 @ 64, YF: 3036, 47,
+tf.app.flags.DEFINE_integer('epoch_size', 3036, """How many images were loaded""")
+tf.app.flags.DEFINE_integer('print_interval', 94, """How often to print a summary to console during training""")
+tf.app.flags.DEFINE_integer('checkpoint_steps', 945, """How many STEPS to wait before saving a checkpoint""")
 tf.app.flags.DEFINE_integer('batch_size', 64, """Number of images to process in a batch.""")
 
 # Hyperparameters:
-tf.app.flags.DEFINE_float('dropout_factor', 0.3, """ Keep probability""")
-tf.app.flags.DEFINE_float('l2_gamma', 2e-4, """ The gamma value for regularization loss""")
+tf.app.flags.DEFINE_float('dropout_factor', 0.7, """ Keep probability""")
+tf.app.flags.DEFINE_float('l2_gamma', 1e-3, """ The gamma value for regularization loss""")
 tf.app.flags.DEFINE_float('moving_avg_decay', 0.999, """ The decay rate for the moving average tracker""")
 
 # Hyperparameters to control the optimizer
-tf.app.flags.DEFINE_float('learning_rate', 1e-4, """Initial learning rate""")
+tf.app.flags.DEFINE_float('learning_rate',1e-3, """Initial learning rate""")
+tf.app.flags.DEFINE_float('lr_decay', 0.98, """The base factor for exp learning rate decay""")
+tf.app.flags.DEFINE_integer('lr_steps', 3000, """ The number of steps until we decay the learning rate""")
 tf.app.flags.DEFINE_float('beta1', 0.9, """ The beta 1 value for the adam optimizer""")
 tf.app.flags.DEFINE_float('beta2', 0.999, """ The beta 1 value for the adam optimizer""")
+tf.app.flags.DEFINE_float('loss_factor', 0.0, """Addnl. fac. for the cost sensitive loss (2 makes 0 == 3x more)""")
 
 
 def train():
@@ -56,10 +59,13 @@ def train():
 
         # Make our ground truth the real age since the bone ages are normal
         avg_label = tf.divide(data['reading'], 19)
+        #avg_label = data['reading']
 
         # Get some metrics
         predictions2 = tf.multiply(logits, 19)
         labels2 = tf.multiply(avg_label, 19)
+        # predictions2 = logits
+        # labels2 = avg_label
 
         # Get MAE
         MAE = tf.metrics.mean_absolute_error(labels2, predictions2)

@@ -19,17 +19,17 @@ FLAGS = tf.app.flags.FLAGS
 
 # Define some of the immutable variables
 tf.app.flags.DEFINE_integer('dims', 256, "Size of the images")
-tf.app.flags.DEFINE_integer('network_dims', 128, "Size of the images")
+tf.app.flags.DEFINE_integer('network_dims', 256, "Size of the images")
 tf.app.flags.DEFINE_string('validation_file', '0', "Which protocol buffer will be used fo validation")
 tf.app.flags.DEFINE_integer('cross_validations', 8, "X fold cross validation hyperparameter")
 
-# Female = 852 - 12 @ 71, Male = 990
-tf.app.flags.DEFINE_integer('epoch_size', 852, """Test examples: OF: 508""")
+# Female = 852, Male = 990, YF: 434
+tf.app.flags.DEFINE_integer('epoch_size', 434, """Test examples: OF: 508""")
 tf.app.flags.DEFINE_integer('batch_size', 64, """Number of images to process in a batch.""")
 
 # Hyperparameters:
-tf.app.flags.DEFINE_float('dropout_factor', 0.5, """ p value for the dropout layer""")
-tf.app.flags.DEFINE_float('l2_gamma', 1e-5, """ The gamma value for regularization loss""")
+tf.app.flags.DEFINE_float('dropout_factor', 0.7, """ p value for the dropout layer""")
+tf.app.flags.DEFINE_float('l2_gamma', 1e-3, """ The gamma value for regularization loss""")
 tf.app.flags.DEFINE_float('moving_avg_decay', 0.999, """ The decay rate for the moving average tracker""")
 
 # Define a custom training class
@@ -46,10 +46,13 @@ def test():
 
         # Make our ground truth the real age since the bone ages are normal
         avg_label = tf.divide(validation['reading'], 19)
+        #avg_label = validation['reading']
 
         # Get some metrics
         predictions2 = tf.multiply(logits, 19)
         labels2 = tf.multiply(avg_label, 19)
+        # predictions2 = logits
+        # labels2 = avg_label
 
         # Initialize variables operation
         var_init = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
