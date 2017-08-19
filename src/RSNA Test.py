@@ -24,11 +24,11 @@ tf.app.flags.DEFINE_string('validation_file', '0', "Which protocol buffer will b
 tf.app.flags.DEFINE_integer('cross_validations', 8, "X fold cross validation hyperparameter")
 
 # Female = 852, Male = 990, YF: 434
-tf.app.flags.DEFINE_integer('epoch_size', 434, """Test examples: OF: 508""")
+tf.app.flags.DEFINE_integer('epoch_size', 494, """Test examples: OF: 508""")
 tf.app.flags.DEFINE_integer('batch_size', 64, """Number of images to process in a batch.""")
 
 # Hyperparameters:
-tf.app.flags.DEFINE_float('dropout_factor', 0.7, """ p value for the dropout layer""")
+tf.app.flags.DEFINE_float('dropout_factor', 0.3, """ p value for the dropout layer""")
 tf.app.flags.DEFINE_float('l2_gamma', 1e-3, """ The gamma value for regularization loss""")
 tf.app.flags.DEFINE_float('moving_avg_decay', 0.999, """ The decay rate for the moving average tracker""")
 
@@ -42,7 +42,7 @@ def test():
         _, validation = Competition.Inputs(skip=True)
 
         # Perform the forward pass:
-        logits, _ = Competition.forward_pass_res(validation['image'], phase_train1=True)
+        logits, _ = Competition.forward_pass_sdn(validation['image'], phase_train1=True)
 
         # Make our ground truth the real age since the bone ages are normal
         avg_label = tf.divide(validation['reading'], 19)
