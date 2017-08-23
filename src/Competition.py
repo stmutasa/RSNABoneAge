@@ -79,7 +79,7 @@ def forward_pass_sdn(images, phase_train1=True):
 
     # Activation summary
     tf.summary.scalar('L2_Loss', L2_loss)
-    print (Predictions, conv5)
+    print (images, conv5)
 
     return Predictions, L2_loss  # Return whatever the name of the final logits variable is
 
@@ -98,28 +98,28 @@ def forward_pass_res(images, phase_train1=True):
     phase_train = tf.Variable(phase_train1, trainable=False, dtype=tf.bool)
 
     # The first layer.
-    conv1 = sdn.convolution('Conv1', images, 5, 32, phase_train=phase_train, BN=False, relu=False)
+    conv1 = sdn.convolution('Conv1', images, 5, 32, 1, phase_train=phase_train, BN=False, relu=False)
 
     # The second  layer
-    conv2 = sdn.residual_layer('Res1', conv1, 3, 64, 2, phase_train=phase_train, BN=False, relu=False)
+    conv2 = sdn.residual_layer('Res1', conv1, 3, 32, 1, phase_train=phase_train, BN=False, relu=False, DSC=True)
 
     # The third layer
-    conv3 = sdn.residual_layer('Res2', conv2, 3, 128, 2, phase_train=phase_train, BN=True, relu=True)
+    conv3 = sdn.residual_layer('Res2', conv2, 3, 64, 1, phase_train=phase_train, BN=True, relu=True, DSC=True)
 
     # Insert inception/residual layer here.
     conv4 = sdn.inception_layer('Inception1', conv3, 64, 2, phase_train=phase_train, BN=False, relu=False)
 
     # The 4th layer
-    conv5 = sdn.residual_layer('Res3', conv4, 3, 512, 2, phase_train=phase_train, BN=True, relu=True)
+    conv5 = sdn.residual_layer('Res3', conv4, 3, 256, 1, phase_train=phase_train, BN=True, relu=True, DSC=True)
 
     # The affine transform layer here:
     h_trans = sdn.spatial_transform_layer('Transformer', conv5)
 
     # The 5th layer
-    conv6 = sdn.convolution('Conv6', h_trans, 3, 512, 2, phase_train=phase_train)
+    conv6 = sdn.convolution('Conv6', h_trans, 3, 512, 1, phase_train=phase_train, downsample=True)
 
     # The Fc7 layer
-    fc7 = sdn.fc7_layer('FC7', conv6, 128, True, phase_train, FLAGS.dropout_factor, BN=False)
+    fc7 = sdn.fc7_layer('FC7', conv6, 128, True, phase_train, FLAGS.dropout_factor, BN=False, override=3)
 
     # Fc8 layer
     fc8 = sdn.linear_layer('fc8', fc7, 32, False, phase_train, BN=False, relu=True)
@@ -138,7 +138,7 @@ def forward_pass_res(images, phase_train1=True):
 
     # Activation summary
     tf.summary.scalar('L2_Loss', L2_loss)
-    print (images, conv6)
+    print (conv6, fc7)
 
     return Predictions, L2_loss  # Return whatever the name of the final logits variable is
 
@@ -200,13 +200,6 @@ def backward_pass(total_loss):
     # Compute the gradients. NAdam optimizer came in tensorflow 1.2
     opt = tf.contrib.opt.NadamOptimizer(learning_rate=FLAGS.learning_rate, beta1=FLAGS.beta1,
                                         beta2=FLAGS.beta2, epsilon=1e-8)
-
-    # # Use learning rate decay
-    # lr = tf.train.exponential_decay(FLAGS.learning_rate, global_step, FLAGS.lr_steps, FLAGS.lr_decay, staircase=False)
-    # tf.summary.scalar('learning_rate', lr)  # Output a scalar sumamry to TensorBoard
-    #
-    # # Compute the gradients. Multiple alternate methods grayed out. So far Adam is winning by a mile
-    # opt = tf.train.AdamOptimizer(learning_rate=lr, beta1=FLAGS.beta1, beta2=FLAGS.beta2)
 
     # Compute the gradients
     gradients = opt.compute_gradients(total_loss)

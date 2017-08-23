@@ -23,9 +23,9 @@ tf.app.flags.DEFINE_integer('network_dims', 256, "Size of the images")
 tf.app.flags.DEFINE_string('validation_file', '0', "Which protocol buffer will be used fo validation")
 tf.app.flags.DEFINE_integer('cross_validations', 8, "X fold cross validation hyperparameter")
 
-# Female = 852, Male = 990, YF: 434
+# Female = 852, Male = 990, YF: 434, OF: 494
 tf.app.flags.DEFINE_integer('epoch_size', 494, """Test examples: OF: 508""")
-tf.app.flags.DEFINE_integer('batch_size', 64, """Number of images to process in a batch.""")
+tf.app.flags.DEFINE_integer('batch_size', 32, """Number of images to process in a batch.""")
 
 # Hyperparameters:
 tf.app.flags.DEFINE_float('dropout_factor', 0.3, """ p value for the dropout layer""")
@@ -42,7 +42,7 @@ def test():
         _, validation = Competition.Inputs(skip=True)
 
         # Perform the forward pass:
-        logits, _ = Competition.forward_pass_sdn(validation['image'], phase_train1=True)
+        logits, _ = Competition.forward_pass_res(validation['image'], phase_train1=True)
 
         # Make our ground truth the real age since the bone ages are normal
         avg_label = tf.divide(validation['reading'], 19)
@@ -66,7 +66,9 @@ def test():
         # Initialize the saver
         saver = tf.train.Saver(var_restore, max_to_keep=5)
 
+        # Track the top performers
         best_MAE = 4
+        best_file = 'None'
 
         while True:
 
@@ -102,7 +104,7 @@ def test():
                 max_steps = int(FLAGS.epoch_size / FLAGS.batch_size)
 
                 # Running values for accuracy calculation
-                right, total = 0, 0
+                right, total, standard = 0, 0, 0
 
                 try:
                     while step < max_steps:
@@ -119,15 +121,17 @@ def test():
                         predictions[predictions > 19] = 19
 
                         # Calculate MAE
-                        MAE = np.mean(np.absolute((predictions - label)))
+                        MAE = np.mean(np.absolute(predictions - label))
+                        STD = np.std(np.absolute(predictions - label))
 
                         # Print the summary
                         np.set_printoptions(precision=1)  # use numpy to print only the first sig fig
-                        print('Pred: %s' % predictions[:12])
-                        print('Real: %s, MAE: %s' % (label[:12], MAE))
+                        print('Pred: %s, STD: %.2f' % (predictions[:12], STD))
+                        print('Real: %s, MAE: %.2f' % (label[:12], MAE))
 
                         # Append right
                         right += MAE
+                        standard += STD
                         total += 1
 
                         # Increment step
@@ -140,12 +144,13 @@ def test():
 
                     # Calculate final MAE and ACC
                     accuracy = right/total
+                    deviation = standard/total
 
                     # Print the final accuracies and MAE
                     print('-' * 70)
                     print(
-                        '--- EPOCH: %s MAE: %.4f (Old Best: %.1f) ---'
-                        % (Epoch, accuracy, best_MAE))
+                        '--- EPOCH: %s MAE: %.4f, STD: %.3f (Old Best: %.2f - %s) ---'
+                        % (Epoch, accuracy, deviation, best_MAE, best_file))
 
                     # Lets save runs below 0.8
                     if accuracy <= best_MAE:
@@ -164,6 +169,7 @@ def test():
 
                         # Save a new best MAE
                         best_MAE = accuracy
+                        best_file = Epoch
 
                     # Stop threads when done
                     coord.request_stop()
