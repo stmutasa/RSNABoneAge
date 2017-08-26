@@ -84,7 +84,7 @@ def forward_pass_sdn(images, phase_train1=True):
     return Predictions, L2_loss  # Return whatever the name of the final logits variable is
 
 
-def forward_pass_res(images, phase_train1=True):
+def forward_pass_res(images, male, phase_train1=True):
     """
     This function builds the network architecture and performs the forward pass
     Two main architectures depending on where to insert the inception or residual layer
@@ -101,7 +101,8 @@ def forward_pass_res(images, phase_train1=True):
     conv1 = sdn.convolution('Conv1', images, 5, 32, 1, phase_train=phase_train, BN=False, relu=False)
 
     # The second  layer
-    conv2 = sdn.residual_layer('Res1', conv1, 3, 32, 1, phase_train=phase_train, BN=False, relu=False, DSC=True)
+    conv2a = sdn.residual_layer('Res0', conv1, 3, 32, 1, phase_train=phase_train, BN=False, relu=False)
+    conv2 = sdn.residual_layer('Res1', conv2a, 3, 32, 1, phase_train=phase_train, BN=False, relu=False, DSC=True)
 
     # The third layer
     conv3 = sdn.residual_layer('Res2', conv2, 3, 64, 1, phase_train=phase_train, BN=True, relu=True, DSC=True)
@@ -119,7 +120,11 @@ def forward_pass_res(images, phase_train1=True):
     conv6 = sdn.convolution('Conv6', h_trans, 3, 512, 1, phase_train=phase_train, downsample=True)
 
     # The Fc7 layer
-    fc7 = sdn.fc7_layer('FC7', conv6, 128, True, phase_train, FLAGS.dropout_factor, BN=False, override=3)
+    fc7a = sdn.fc7_layer('FC7', conv6, 128, True, phase_train, FLAGS.dropout_factor, BN=False, override=3)
+
+    # Concat gender vector
+    male = tf.expand_dims(male, dim=1)
+    fc7 = tf.concat([fc7a, male], -1)
 
     # Fc8 layer
     fc8 = sdn.linear_layer('fc8', fc7, 32, False, phase_train, BN=False, relu=True)
@@ -138,7 +143,7 @@ def forward_pass_res(images, phase_train1=True):
 
     # Activation summary
     tf.summary.scalar('L2_Loss', L2_loss)
-    print (conv6, fc7)
+    print (conv6, fc7, male, fc7a)
 
     return Predictions, L2_loss  # Return whatever the name of the final logits variable is
 
@@ -289,6 +294,11 @@ def load_validation_set():
     sex = tf.cast(features['sex'], tf.string)
     ptid = tf.string_to_number(features['ptid'], tf.float32)
 
+    # Gender specific
+    male = tf.cond(tf.equal(sex, 'M'), lambda:tf.Variable(1.0, trainable=False), lambda:tf.Variable(0.0, trainable=False))
+    # male = tf.Variable(tf.equal(sex, 'M'), dtype=tf.float32)
+    # male = tf.cast(tf.equal(sex, 'M'), tf.float32)
+
     # create float summary image
     tf.summary.image('Testing Image', tf.reshape(image, shape=[1, FLAGS.dims, FLAGS.dims, 1]), max_outputs=4)
 
@@ -297,7 +307,7 @@ def load_validation_set():
     #image = tf.image.per_image_standardization(image)
 
     # Return data as a dictionary by default
-    final_data = {'image': image, 'reading': reading, 'age': age, 'sex': sex, 'ptid':ptid}
+    final_data = {'image': image, 'reading': reading, 'age': age, 'sex': sex, 'male':male, 'ptid':ptid}
     returned_dict = {}
     returned_dict['id'] = id
     for key, feature in final_data.items():
@@ -350,6 +360,12 @@ def load_protobuf():
     sex = tf.cast(features['sex'], tf.string)
     ptid = tf.string_to_number(features['ptid'], tf.float32)
 
+    # Gender specific
+    male = tf.cond(tf.equal(sex, 'M'), lambda: tf.Variable(1.0, trainable=False),
+                   lambda: tf.Variable(0.0, trainable=False))
+    # male = tf.Variable(tf.equal(sex, 'M'), dtype=tf.float32)
+    # male = tf.cast(tf.equal(sex, 'M'), tf.float32)
+
     # Apply image pre processing here:
     image = tf.image.random_flip_left_right(tf.image.random_flip_up_down(image))
 
@@ -371,7 +387,7 @@ def load_protobuf():
     #image = tf.image.per_image_standardization(image)
 
     # Return data as a dictionary by default
-    final_data = {'image': image, 'reading': reading, 'age': age, 'sex': sex, 'ptid': ptid}
+    final_data = {'image': image, 'reading': reading, 'age': age, 'sex': sex, 'male': male, 'ptid': ptid}
     returned_dict = {}
     returned_dict['id'] = id
     for key, feature in final_data.items():

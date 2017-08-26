@@ -27,18 +27,18 @@ tf.app.flags.DEFINE_integer('num_epochs', 900, """Number of epochs to run""")
 tf.app.flags.DEFINE_string('gender', 'M', """Which version to run""")
 
 # Female = 5958, 950 @ 64, Male = 6934, 108 @ 64, YF: 3036, 47, OF: 3458, 54
-tf.app.flags.DEFINE_integer('epoch_size', 3458, """How many images were loaded""")
-tf.app.flags.DEFINE_integer('print_interval', 54, """How often to print a summary to console during training""")
-tf.app.flags.DEFINE_integer('checkpoint_steps', 541, """How many STEPS to wait before saving a checkpoint""")
-tf.app.flags.DEFINE_integer('batch_size', 64, """Number of images to process in a batch.""")
+tf.app.flags.DEFINE_integer('epoch_size', 12892, """How many images were loaded""")
+tf.app.flags.DEFINE_integer('print_interval', 202, """How often to print a summary to console during training""")
+tf.app.flags.DEFINE_integer('checkpoint_steps', 2015, """How many STEPS to wait before saving a checkpoint""")
+tf.app.flags.DEFINE_integer('batch_size', 32, """Number of images to process in a batch.""")
 
 # Hyperparameters:
-tf.app.flags.DEFINE_float('dropout_factor', 0.5, """ Keep probability""")
+tf.app.flags.DEFINE_float('dropout_factor', 0.75, """ Keep probability""")
 tf.app.flags.DEFINE_float('l2_gamma', 1e-4, """ The gamma value for regularization loss""")
 tf.app.flags.DEFINE_float('moving_avg_decay', 0.999, """ The decay rate for the moving average tracker""")
 
 # Hyperparameters to control the optimizer
-tf.app.flags.DEFINE_float('learning_rate',1e-3, """Initial learning rate""")
+tf.app.flags.DEFINE_float('learning_rate',3e-3, """Initial learning rate""")
 tf.app.flags.DEFINE_float('beta1', 0.9, """ The beta 1 value for the adam optimizer""")
 tf.app.flags.DEFINE_float('beta2', 0.999, """ The beta 1 value for the adam optimizer""")
 tf.app.flags.DEFINE_float('loss_factor', 0.0, """Addnl. fac. for the cost sensitive loss (2 makes 0 == 3x more)""")
@@ -52,7 +52,7 @@ def train():
         data, _ = Competition.Inputs(skip=True)
 
         # Perform the forward pass:
-        logits, l2loss = Competition.forward_pass_res(data['image'], phase_train1=True)
+        logits, l2loss = Competition.forward_pass_res(data['image'], data['male'], phase_train1=True)
 
         # Make our ground truth the real age since the bone ages are normal
         avg_label = tf.divide(data['reading'], 19)
