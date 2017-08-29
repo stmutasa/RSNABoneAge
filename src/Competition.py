@@ -27,64 +27,7 @@ sdn = SDN.SODMatrix()
 FLAGS = tf.app.flags.FLAGS
 
 
-def forward_pass_sdn(images, phase_train1=True):
-    """
-    This function builds the network architecture and performs the forward pass
-    Two main architectures depending on where to insert the inception or residual layer
-    :param images: Images to analyze
-    :param phase_train1: bool, whether this is the training phase or testing phase
-    :return: logits: the predicted age from the network
-    :return: l2: the value of the l2 loss
-    """
-
-    # Set Phase train variable
-    phase_train = tf.Variable(phase_train1, trainable=False, dtype=tf.bool)
-
-    # The first convolutional layer. Dimensions: 4, 128, 128, 64
-    conv1 = sdn.convolution('Conv1', images, 7, 64, phase_train=phase_train)
-
-    # The second convolutional layer    Dimensions: _, 64, 64, 128
-    conv2 = sdn.convolution('Conv2', conv1, 5, 128, phase_train=phase_train)
-
-    # The third convolutional layer Dimensions: _,32, 32, 256
-    conv3 = sdn.convolution('Conv3', conv2, 3, 256, phase_train=phase_train, BN=False, relu=False)
-
-    # Insert inception/residual layer here. Output is same dimensions as previous layer
-    #residual = sdn.res_inc_layer('ResInc1', conv3, 3, 64, phase_train=phase_train)
-    residual = residual_layer('Residual', conv3, 3, 64, 'SAME', phase_train)
-
-    # The 4th convolutional layer   Dimensions: _, 16, 16, 128
-    conv4 = sdn.convolution('Conv4', residual, 3, 128, phase_train=phase_train)
-
-    # The affine transform layer here: Dimensions: _, 16, 16, 128
-    h_trans = sdn.spatial_transform_layer('Transformer', conv4)
-
-    # The 5th convolutional layer, Dimensions: _, 8, 8, 128
-    conv5 = sdn.convolution('Conv5', h_trans, 1, 128, phase_train=phase_train)
-
-    # The Fc7 layer Dimensions: diff is biases
-    fc7 = sdn.fc7_layer('FC7', conv5, 128, True, phase_train, FLAGS.dropout_factor, BN=False)
-
-    # The linear layer: diff is +Relu -slice, +xaviaer +bias zero
-    Predictions = sdn.linear_layer('Output', fc7, 1, phase_train=phase_train, relu=False)
-
-    # Retreive the weights collection
-    weights = tf.get_collection('weights')
-
-    # Sum the losses
-    L2_loss = tf.multiply(tf.add_n([tf.nn.l2_loss(v) for v in weights]), FLAGS.l2_gamma)
-
-    # Add it to the collection
-    tf.add_to_collection('losses', L2_loss)
-
-    # Activation summary
-    tf.summary.scalar('L2_Loss', L2_loss)
-    print (images, conv5)
-
-    return Predictions, L2_loss  # Return whatever the name of the final logits variable is
-
-
-def forward_pass_res(images, male, phase_train1=True):
+def forward_pass_res(images, phase_train1=True):
     """
     This function builds the network architecture and performs the forward pass
     Two main architectures depending on where to insert the inception or residual layer
@@ -101,8 +44,7 @@ def forward_pass_res(images, male, phase_train1=True):
     conv1 = sdn.convolution('Conv1', images, 5, 32, 1, phase_train=phase_train, BN=False, relu=False)
 
     # The second  layer
-    conv2a = sdn.residual_layer('Res0', conv1, 3, 32, 1, phase_train=phase_train, BN=False, relu=False)
-    conv2 = sdn.residual_layer('Res1', conv2a, 3, 32, 1, phase_train=phase_train, BN=False, relu=False, DSC=True)
+    conv2 = sdn.residual_layer('Res1', conv1, 3, 32, 1, phase_train=phase_train, BN=False, relu=False, DSC=True)
 
     # The third layer
     conv3 = sdn.residual_layer('Res2', conv2, 3, 64, 1, phase_train=phase_train, BN=True, relu=True, DSC=True)
@@ -120,11 +62,7 @@ def forward_pass_res(images, male, phase_train1=True):
     conv6 = sdn.convolution('Conv6', h_trans, 3, 512, 1, phase_train=phase_train, downsample=True)
 
     # The Fc7 layer
-    fc7a = sdn.fc7_layer('FC7', conv6, 128, True, phase_train, FLAGS.dropout_factor, BN=False, override=3)
-
-    # Concat gender vector
-    male = tf.expand_dims(male, dim=1)
-    fc7 = tf.concat([fc7a, male], -1)
+    fc7 = sdn.fc7_layer('FC7', conv6, 128, True, phase_train, FLAGS.dropout_factor, BN=False, override=3)
 
     # Fc8 layer
     fc8 = sdn.linear_layer('fc8', fc7, 32, False, phase_train, BN=False, relu=True)
@@ -143,7 +81,7 @@ def forward_pass_res(images, male, phase_train1=True):
 
     # Activation summary
     tf.summary.scalar('L2_Loss', L2_loss)
-    print (conv6, fc7, male, fc7a)
+    print (conv6, fc7)
 
     return Predictions, L2_loss  # Return whatever the name of the final logits variable is
 
@@ -537,148 +475,3 @@ def pre_process_RSNA(gender='S', dims=256, xvals = 5, agez = 0, filez = 'ALL'):
 
     # Close the file after writing
     for y in range(xvals): writer[y].close()
-
-
-def convolution(scope, X, F, K, S=2, padding='SAME', phase_train=None):
-    """
-    This is a wrapper for convolutions
-    :param scope:
-    :param X: Output of the prior layer
-    :param F: Convolutional filter size
-    :param K: Number of feature maps
-    :param S: Stride
-    :param padding:
-    :param phase_train: For batch norm implementation
-    :return:
-    """
-
-    # Set channel size based on input depth
-    C = X.get_shape().as_list()[3]
-
-    # Set the scope
-    with tf.variable_scope(scope) as scope:
-
-        # Define the Kernel. Can use Xavier init: contrib.layers.xavier_initializer())
-        kernel = tf.get_variable('Weights', shape=[F, F, C, K],
-                                 initializer=tf.truncated_normal_initializer(stddev=5e-2))
-
-        # Add to the weights collection
-        tf.add_to_collection('weights', kernel)
-
-        # Perform the actual convolution
-        conv = tf.nn.conv2d(X, kernel, [1, S, S, 1], padding=padding)  # Create a 2D tensor with BATCH_SIZE rows
-
-        # Apply the batch normalization. Updates weights during training phase only
-        norm = tf.cond(phase_train,
-                lambda: tf.contrib.layers.batch_norm(conv, activation_fn=None, center=True, scale=True,
-                                                     updates_collections=None, is_training=True, reuse=None,
-                                                     scope=scope, decay=0.9, epsilon=1e-5),
-                lambda: tf.contrib.layers.batch_norm(conv, activation_fn=None, center=True, scale=True,
-                                                     updates_collections=None, is_training=False, reuse=True,
-                                                     scope=scope, decay=0.9, epsilon=1e-5))
-
-
-
-        # Relu activation
-        conv = tf.nn.relu(norm, name=scope.name)
-
-        # Create a histogram/scalar summary of the conv1 layer
-        sdn._activation_summary(conv)
-
-        return conv
-
-
-def inception_layer(scope, X, K, S=1, padding='SAME', phase_train=None):
-    """
-    This function implements an inception layer or "network within a network"
-    :param scope:
-    :param X: Output of the previous layer
-    :param K: Feature maps in the inception layer (will be multiplied by 4 during concatenation)
-    :param S: Stride
-    :param padding:
-    :param phase_train: For batch norm implementation
-    :return: the inception layer output after concat
-    """
-
-    # Implement an inception layer here ----------------
-    with tf.variable_scope(scope) as scope:
-
-        # First branch, 1x1x64 convolution
-        inception1 = convolution('Inception1', X, 1, K, S, phase_train=phase_train)  # 64x64x64
-
-        # Second branch, 1x1 convolution then 3x3 convolution
-        inception2a = convolution('Inception2a', X, 1, 1, 1, phase_train=phase_train)  # 64x64x1
-        inception2 = convolution('Inception2', inception2a, 3, K, S, phase_train=phase_train)  # 64x64x64
-
-        # Third branch, 1x1 convolution then 5x5 convolution:
-        inception3a = convolution('Inception3a', X, 1, 1, 1, phase_train=phase_train)  # 64x64x1
-        inception3 = convolution('Inception3', inception3a, 5, K, S, phase_train=phase_train)  # 64x64x64
-
-        # Fourth branch, max pool then 1x1 conv:
-        inception4a = tf.nn.max_pool(X, [1, 3, 3, 1], [1, 1, 1, 1], padding)  # 64x64x256
-        inception4 = convolution('Inception4', inception4a, 1, K, S, phase_train=phase_train)  # 64x64x64
-
-        # Concatenate the results for dimension of 64,64,256
-        inception = tf.concat([tf.concat([tf.concat([inception1, inception2], axis=3),
-                                          inception3], axis=3), inception4], axis=3)
-
-        return inception
-
-
-def residual_layer(scope, X, F, K, padding='SAME', phase_train=None):
-    """
-    This is a wrapper for implementing a hybrid residual layer with inception layer as F(x)
-    :param scope:
-    :param X: Output of the previous layer
-    :param F: Dimensions of the second convolution in F(x) - the non inception layer one
-    :param K: Feature maps in the inception layer (will be multiplied by 4 during concatenation)
-    :param S: Stride
-    :param padding:
-    :param phase_train: For batch norm implementation
-    :return:
-    """
-
-    # Set channel size based on input depth
-    C = X.get_shape().as_list()[3]
-
-    # Set the scope. Implement a residual layer below: Conv-relu-conv-residual-relu
-    with tf.variable_scope(scope) as scope:
-
-        # The first layer is an inception layer
-        conv1 = inception_layer(scope, X, K, 1, phase_train=phase_train)
-
-        # Define the Kernel for conv2. Which is a normal conv layer
-        kernel = tf.get_variable('Weights', shape=[F, F, C, K*4],
-                                 initializer=tf.truncated_normal_initializer(stddev=5e-2))
-
-        # Add this kernel to the weights collection for L2 reg
-        tf.add_to_collection('weights', kernel)
-
-        # Perform the actual convolution
-        conv2 = tf.nn.conv2d(conv1, kernel, [1, 1, 1, 1], padding=padding)  # Create a 2D tensor with BATCH_SIZE rows
-
-        # Add in the residual here
-        residual = tf.add(conv2, X)
-
-        # Apply the batch normalization. Updates weights during training phase only
-        norm = tf.cond(phase_train,
-                       lambda: tf.contrib.layers.batch_norm(residual, activation_fn=None, center=True, scale=True,
-                                                            updates_collections=None, is_training=True, reuse=None,
-                                                            scope=scope, decay=0.9, epsilon=1e-5),
-                       lambda: tf.contrib.layers.batch_norm(residual, activation_fn=None, center=True, scale=True,
-                                                            updates_collections=None, is_training=False, reuse=True,
-                                                            scope=scope, decay=0.9, epsilon=1e-5))
-
-        # Relu activation
-        conv = tf.nn.relu(norm, name=scope.name)
-
-        # Create a histogram/scalar summary of the conv1 layer
-        sdn._activation_summary(conv)
-
-        return conv
-
-#
-# pre_process_RSNA(gender='F', dims=256, xvals=8, agez=5, filez='YF')
-# pre_process_RSNA(gender='F', dims=256, xvals=8, agez=15, filez='OF')
-# pre_process_RSNA(gender='M', dims=256, xvals=8, agez=5, filez='YM')
-# pre_process_RSNA(gender='M', dims=256, xvals=8, agez=15, filez='OM')

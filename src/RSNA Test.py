@@ -23,13 +23,13 @@ tf.app.flags.DEFINE_integer('network_dims', 256, "Size of the images")
 tf.app.flags.DEFINE_string('validation_file', '0', "Which protocol buffer will be used fo validation")
 tf.app.flags.DEFINE_integer('cross_validations', 8, "X fold cross validation hyperparameter")
 
-# Female = 852, Male = 990, YF: 434, OF: 494
-tf.app.flags.DEFINE_integer('epoch_size', 1842, """Test examples: OF: 508""")
-tf.app.flags.DEFINE_integer('batch_size', 16, """Number of images to process in a batch.""")
+# Female = 852, Male = 990, YF: 434, OF: 494, YM 368
+tf.app.flags.DEFINE_integer('epoch_size', 368, """Test examples: OF: 508""")
+tf.app.flags.DEFINE_integer('batch_size', 32, """Number of images to process in a batch.""")
 
 # Hyperparameters:
-tf.app.flags.DEFINE_float('dropout_factor', 0.3, """ p value for the dropout layer""")
-tf.app.flags.DEFINE_float('l2_gamma', 1e-3, """ The gamma value for regularization loss""")
+tf.app.flags.DEFINE_float('dropout_factor', 0.5, """ p value for the dropout layer""")
+tf.app.flags.DEFINE_float('l2_gamma', 1e-4, """ The gamma value for regularization loss""")
 tf.app.flags.DEFINE_float('moving_avg_decay', 0.999, """ The decay rate for the moving average tracker""")
 
 # Define a custom training class
@@ -42,17 +42,22 @@ def test():
         _, validation = Competition.Inputs(skip=True)
 
         # Perform the forward pass:
-        logits, _ = Competition.forward_pass_res(validation['image'], validation['male'], phase_train1=True)
+        logits, _ = Competition.forward_pass_res(validation['image'], phase_train1=True)
 
         # Make our ground truth the real age since the bone ages are normal
         avg_label = tf.divide(validation['reading'], 19)
-        #avg_label = validation['reading']
-
         # Get some metrics
         predictions2 = tf.multiply(logits, 19)
         labels2 = tf.multiply(avg_label, 19)
-        # predictions2 = logits
-        # labels2 = avg_label
+
+        # Output the summary of the MSE and MAE
+        tf.summary.scalar('Absolute Error', tf.reduce_mean(tf.abs(tf.squeeze(avg_label) - tf.squeeze(logits))))
+
+        # Merge the summaries
+        all_summaries = tf.summary.merge_all()
+
+        # Initialize the handle to the summary writer in our training directory
+        summary_writer = tf.summary.FileWriter('training/Test/')
 
         # Initialize variables operation
         var_init = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
@@ -72,7 +77,13 @@ def test():
 
         while True:
 
-            with tf.Session() as mon_sess:
+            # Check folder for changes
+            filecheck = glob.glob('training/' + '*')
+
+            # config Proto sets options for configuring the session like run on GPU, allocate GPU memory etc.
+            config = tf.ConfigProto(allow_soft_placement=True)
+            config.gpu_options.allow_growth = True
+            with tf.Session(config=config) as mon_sess:
 
                 # Retreive the checkpoint
                 ckpt = tf.train.get_checkpoint_state('training/')
@@ -89,7 +100,7 @@ def test():
                     restorer.restore(mon_sess, ckpt.model_checkpoint_path)
 
                     # Extract the epoch
-                    Epoch = ckpt.model_checkpoint_path.split('/')[-1].split('Epoch')[-1]
+                    Epoch = ckpt.model_checkpoint_path.split('/')[-1].split('_')[-1]
 
                 # Initialize the thread coordinator
                 coord = tf.train.Coordinator()
@@ -134,6 +145,9 @@ def test():
                         standard += STD
                         total += 1
 
+                        # Garbage collection
+                        del preds, labs, predictions, label, MAE, STD
+
                         # Increment step
                         step += 1
 
@@ -151,6 +165,12 @@ def test():
                     print(
                         '--- EPOCH: %s MAE: %.4f, STD: %.3f (Old Best: %.2f - %s) ---'
                         % (Epoch, accuracy, deviation, best_MAE, best_file))
+
+                    # Run a session to retrieve our summaries
+                    summary = mon_sess.run(all_summaries)
+
+                    # Add the summaries to the protobuf for Tensorboard
+                    summary_writer.add_summary(summary, int(int(Epoch) * 47))
 
                     # Lets save runs below 0.8
                     if accuracy <= best_MAE:
@@ -187,8 +207,7 @@ def test():
             print('-' * 70)
 
             # Otherwise check folder for changes
-            filecheck = glob.glob('training/' + '*')
-            newfilec = filecheck
+            newfilec = glob.glob('training/' + '*')
 
             # Sleep if no changes
             while filecheck == newfilec:
